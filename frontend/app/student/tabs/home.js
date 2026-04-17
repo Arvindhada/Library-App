@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import colors from '../../../src/constants/colors';
@@ -23,6 +23,12 @@ export default function StudentHome() {
         <TouchableOpacity style={s.bell}><Ionicons name="notifications-outline" size={24} color={colors.textPrimary} /></TouchableOpacity>
       </View>
 
+      {/* Search Bar — tapping opens Search tab */}
+      <TouchableOpacity testID="home-search-bar" style={s.searchBar} onPress={() => router.push('/student/tabs/search')} activeOpacity={0.8}>
+        <Ionicons name="search" size={20} color={colors.textLight} />
+        <Text style={s.searchPlaceholder}>Search by name or area...</Text>
+      </TouchableOpacity>
+
       {/* Near You */}
       <View style={s.section}>
         <Text style={s.secTitle}>Libraries Near You</Text>
@@ -45,11 +51,13 @@ export default function StudentHome() {
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgLight },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 52, paddingBottom: 16, backgroundColor: colors.white },
+  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 52, paddingBottom: 12, backgroundColor: colors.white },
   hello: { fontSize: 22, fontWeight: 'bold', color: colors.textPrimary },
   locRow: { flexDirection: 'row', alignItems: 'center', marginTop: 4 },
   locText: { fontSize: 13, color: colors.textSecondary, marginLeft: 4 },
   bell: { padding: 6 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, marginHorizontal: 16, marginTop: 12, marginBottom: 4, paddingHorizontal: 16, paddingVertical: 14, borderRadius: 12, borderWidth: 1, borderColor: colors.cardBorder },
+  searchPlaceholder: { fontSize: 15, color: colors.textLight, marginLeft: 10 },
   section: { marginTop: 16 },
   secTitle: { fontSize: 17, fontWeight: '700', color: colors.textPrimary, paddingHorizontal: 16, marginBottom: 10 },
 });

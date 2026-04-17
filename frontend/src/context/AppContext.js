@@ -41,6 +41,14 @@ export const AppProvider = ({ children }) => {
   // Get owner library
   const getOwnerLibrary = () => libraries.find((l) => l.id === ownerData.libraryId) || libraries[0];
 
+  // Update owner library details (for edit form)
+  const updateOwnerLibrary = (updates) => {
+    const libId = ownerData.libraryId;
+    setLibraries((prev) =>
+      prev.map((lib) => (lib.id === libId ? { ...lib, ...updates } : lib))
+    );
+  };
+
   return (
     <AppContext.Provider
       value={{
@@ -52,6 +60,7 @@ export const AppProvider = ({ children }) => {
         seatStates, setSeatStates,
         updateLibrarySeats,
         getOwnerLibrary,
+        updateOwnerLibrary,
       }}
     >
       {children}

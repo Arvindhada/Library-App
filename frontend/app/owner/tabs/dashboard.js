@@ -1,107 +1,75 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, Alert, Switch, TextInput } from 'react-native';
+// Owner Dashboard — Stats, Revenue, Students + Seat Manager button
+import React from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity } from 'react-native';
+import { useRouter } from 'expo-router';
+import { Ionicons } from '@expo/vector-icons';
 import colors from '../../../src/constants/colors';
 import { useApp } from '../../../src/context/AppContext';
-import SeatBox from '../../../src/components/SeatBox';
+import { dummyStudents, weeklyRevenue } from '../../../src/constants/dummyData';
 
 export default function OwnerDashboard() {
-  const { getOwnerLibrary, updateLibrarySeats } = useApp();
+  const router = useRouter();
+  const { ownerData, getOwnerLibrary } = useApp();
   const lib = getOwnerLibrary();
-  const total = lib?.totalSeats || 80;
-
-  // Seat grid state: true = booked, false = available
-  const [seats, setSeats] = useState(() => {
-    const arr = [];
-    for (let i = 0; i < total; i++) arr.push(i < (lib?.bookedSeats || 0));
-    return arr;
-  });
-
-  // Timing state
-  const [halfEnabled, setHalfEnabled] = useState(true);
-  const [fullEnabled, setFullEnabled] = useState(true);
-  const [halfFee, setHalfFee] = useState(String(lib?.halfTime?.fee || 400));
-  const [fullFee, setFullFee] = useState(String(lib?.fullTime?.fee || 800));
-
-  const vacant = useMemo(() => seats.filter((s) => !s).length, [seats]);
-  const booked = useMemo(() => seats.filter((s) => s).length, [seats]);
-
-  const toggleSeat = (idx) => {
-    setSeats((prev) => { const n = [...prev]; n[idx] = !n[idx]; return n; });
-  };
-
-  const saveChanges = () => {
-    updateLibrarySeats(lib.id, vacant, booked);
-    Alert.alert('Saved!', `Vacant: ${vacant}, Booked: ${booked}`);
-  };
+  const occupancy = lib ? Math.round(((lib.totalSeats - lib.vacantSeats) / lib.totalSeats) * 100) : 0;
+  const totalRevenue = weeklyRevenue.reduce((a, b) => a + b.amount, 0);
+  const maxRev = Math.max(...weeklyRevenue.map((w) => w.amount));
 
   return (
     <ScrollView style={s.container} showsVerticalScrollIndicator={false}>
-      <View style={s.header}><Text style={s.heading}>Seat Manager</Text></View>
+      <View style={s.header}><Text style={s.heading}>Dashboard</Text></View>
 
-      <View style={s.totalRow}>
-        <Text style={s.totalText}>Total: {total} Seats</Text>
-        <Text style={s.legend}><Text style={{ color: colors.success }}>■</Text> Available  <Text style={{ color: colors.danger }}>■</Text> Booked</Text>
+      {/* Stats */}
+      <View style={s.statsRow}>
+        <View style={[s.statCard, { borderLeftColor: colors.info }]}><Text style={s.statVal}>{lib?.totalSeats || 0}</Text><Text style={s.statLbl}>Total</Text></View>
+        <View style={[s.statCard, { borderLeftColor: colors.success }]}><Text style={[s.statVal, { color: colors.success }]}>{lib?.vacantSeats || 0}</Text><Text style={s.statLbl}>Vacant</Text></View>
+        <View style={[s.statCard, { borderLeftColor: colors.danger }]}><Text style={[s.statVal, { color: colors.danger }]}>{lib?.bookedSeats || 0}</Text><Text style={s.statLbl}>Occupied</Text></View>
       </View>
 
-      {/* Seat Grid */}
-      <View style={s.grid}>
-        <FlatList
-          data={seats}
-          keyExtractor={(_, i) => String(i)}
-          numColumns={8}
-          scrollEnabled={false}
-          renderItem={({ item, index }) => (
-            <SeatBox seatNumber={index + 1} isBooked={item} onPress={() => toggleSeat(index)} />
-          )}
-        />
+      {/* Occupancy */}
+      <View style={s.occCard}>
+        <Text style={s.occText}>Your library is <Text style={{ color: colors.primary, fontWeight: '700' }}>{occupancy}% occupied</Text></Text>
+        <View style={s.barBg}><View style={[s.barFill, { width: `${occupancy}%` }]} /></View>
       </View>
 
-      <View style={s.summaryRow}>
-        <View style={[s.sumCard, { backgroundColor: colors.success + '15' }]}><Text style={[s.sumVal, { color: colors.success }]}>{vacant}</Text><Text style={s.sumLbl}>Available</Text></View>
-        <View style={[s.sumCard, { backgroundColor: colors.danger + '15' }]}><Text style={[s.sumVal, { color: colors.danger }]}>{booked}</Text><Text style={s.sumLbl}>Booked</Text></View>
-      </View>
-
-      <TouchableOpacity testID="save-seats-btn" style={s.saveBtn} onPress={saveChanges}>
-        <Text style={s.saveBtnText}>Save Changes</Text>
+      {/* BIG Seat Manager Button */}
+      <TouchableOpacity testID="open-seat-manager-btn" style={s.seatMgrBtn} onPress={() => router.push('/owner/seat-manager')} activeOpacity={0.8}>
+        <View style={s.seatMgrIcon}><Ionicons name="grid" size={28} color={colors.white} /></View>
+        <View style={{ flex: 1 }}>
+          <Text style={s.seatMgrTitle}>Seat Manager</Text>
+          <Text style={s.seatMgrSub}>Manage individual seat availability</Text>
+        </View>
+        <Ionicons name="chevron-forward" size={22} color={colors.white} />
       </TouchableOpacity>
 
-      {/* Timing & Fees */}
-      <View style={s.timingSection}>
-        <Text style={s.secTitle}>Timing & Fees</Text>
-
-        <View style={s.timingCard}>
-          <View style={s.timingHeader}>
-            <Text style={s.timingTitle}>Half Time</Text>
-            <Switch value={halfEnabled} onValueChange={setHalfEnabled} trackColor={{ true: colors.primary }} />
-          </View>
-          {halfEnabled && (
-            <View>
-              <Text style={s.timingDetail}>{lib?.halfTime?.from} - {lib?.halfTime?.to}</Text>
-              <View style={s.feeRow}>
-                <Text style={s.feeLabel}>₹</Text>
-                <TextInput style={s.feeInput} value={halfFee} onChangeText={setHalfFee} keyboardType="number-pad" />
-                <Text style={s.feeLabel}>/month</Text>
-              </View>
+      {/* Revenue */}
+      <View style={s.revCard}>
+        <Text style={s.secTitle}>This Month's Revenue</Text>
+        <Text style={s.revAmount}>₹{totalRevenue.toLocaleString()}</Text>
+        <View style={s.chartRow}>
+          {weeklyRevenue.map((w) => (
+            <View key={w.day} style={s.chartCol}>
+              <View style={[s.chartBar, { height: (w.amount / maxRev) * 60 }]} />
+              <Text style={s.chartLbl}>{w.day}</Text>
             </View>
-          )}
+          ))}
         </View>
+      </View>
 
-        <View style={s.timingCard}>
-          <View style={s.timingHeader}>
-            <Text style={s.timingTitle}>Full Time</Text>
-            <Switch value={fullEnabled} onValueChange={setFullEnabled} trackColor={{ true: colors.primary }} />
-          </View>
-          {fullEnabled && (
-            <View>
-              <Text style={s.timingDetail}>{lib?.fullTime?.from} - {lib?.fullTime?.to}</Text>
-              <View style={s.feeRow}>
-                <Text style={s.feeLabel}>₹</Text>
-                <TextInput style={s.feeInput} value={fullFee} onChangeText={setFullFee} keyboardType="number-pad" />
-                <Text style={s.feeLabel}>/month</Text>
-              </View>
+      {/* Currently in Library */}
+      <View style={s.section}>
+        <Text style={s.secTitle}>Currently in Library</Text>
+        {dummyStudents.map((st) => (
+          <View key={st.id} style={s.studentRow}>
+            <View style={s.avatar}><Ionicons name="person" size={18} color={colors.white} /></View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.stName}>{st.name}</Text>
+              <Text style={s.stGoal}>{st.goal}</Text>
             </View>
-          )}
-        </View>
+            <View style={s.seatBadge}><Text style={s.seatText}>Seat {st.seat}</Text></View>
+            <Text style={s.since}>{st.since}</Text>
+          </View>
+        ))}
       </View>
       <View style={{ height: 30 }} />
     </ScrollView>
@@ -112,23 +80,31 @@ const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgLight },
   header: { paddingHorizontal: 20, paddingTop: 52, paddingBottom: 12, backgroundColor: colors.white },
   heading: { fontSize: 22, fontWeight: 'bold', color: colors.textPrimary },
-  totalRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingVertical: 12 },
-  totalText: { fontSize: 15, fontWeight: '600', color: colors.textPrimary },
-  legend: { fontSize: 12, color: colors.textSecondary },
-  grid: { paddingHorizontal: 12, paddingVertical: 8, backgroundColor: colors.white, marginHorizontal: 16, borderRadius: 12 },
-  summaryRow: { flexDirection: 'row', paddingHorizontal: 16, marginTop: 14, gap: 10 },
-  sumCard: { flex: 1, borderRadius: 10, padding: 14, alignItems: 'center' },
-  sumVal: { fontSize: 24, fontWeight: 'bold' },
-  sumLbl: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
-  saveBtn: { backgroundColor: colors.primary, marginHorizontal: 16, marginTop: 16, paddingVertical: 14, borderRadius: 10, alignItems: 'center' },
-  saveBtnText: { color: colors.white, fontSize: 16, fontWeight: '600' },
-  timingSection: { paddingHorizontal: 16, marginTop: 24 },
+  statsRow: { flexDirection: 'row', paddingHorizontal: 16, paddingTop: 16, gap: 10 },
+  statCard: { flex: 1, backgroundColor: colors.white, borderRadius: 10, padding: 14, borderLeftWidth: 4, alignItems: 'center' },
+  statVal: { fontSize: 26, fontWeight: 'bold', color: colors.textPrimary },
+  statLbl: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
+  occCard: { backgroundColor: colors.white, borderRadius: 10, padding: 16, marginHorizontal: 16, marginTop: 14 },
+  occText: { fontSize: 14, color: colors.textPrimary, marginBottom: 10 },
+  barBg: { height: 10, backgroundColor: colors.cardBorder, borderRadius: 5, overflow: 'hidden' },
+  barFill: { height: 10, backgroundColor: colors.primary, borderRadius: 5 },
+  seatMgrBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.primary, marginHorizontal: 16, marginTop: 16, padding: 18, borderRadius: 14 },
+  seatMgrIcon: { width: 50, height: 50, borderRadius: 14, backgroundColor: colors.primaryDark, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
+  seatMgrTitle: { fontSize: 18, fontWeight: '700', color: colors.white },
+  seatMgrSub: { fontSize: 13, color: colors.white, opacity: 0.85, marginTop: 2 },
+  revCard: { backgroundColor: colors.white, borderRadius: 10, padding: 16, marginHorizontal: 16, marginTop: 16 },
+  revAmount: { fontSize: 28, fontWeight: 'bold', color: colors.success, marginVertical: 8 },
+  chartRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 10, height: 80 },
+  chartCol: { alignItems: 'center', flex: 1 },
+  chartBar: { width: 18, backgroundColor: colors.primary, borderRadius: 4, minHeight: 6 },
+  chartLbl: { fontSize: 10, color: colors.textSecondary, marginTop: 4 },
+  section: { paddingHorizontal: 16, marginTop: 20 },
   secTitle: { fontSize: 17, fontWeight: '700', color: colors.textPrimary, marginBottom: 12 },
-  timingCard: { backgroundColor: colors.white, borderRadius: 10, padding: 16, marginBottom: 12 },
-  timingHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' },
-  timingTitle: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
-  timingDetail: { fontSize: 14, color: colors.textSecondary, marginTop: 8 },
-  feeRow: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
-  feeLabel: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
-  feeInput: { borderBottomWidth: 1, borderBottomColor: colors.cardBorder, marginHorizontal: 6, fontSize: 18, fontWeight: '700', color: colors.primary, minWidth: 60, textAlign: 'center', paddingVertical: 2 },
+  studentRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, padding: 12, borderRadius: 10, marginBottom: 8 },
+  avatar: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center', marginRight: 10 },
+  stName: { fontSize: 14, fontWeight: '600', color: colors.textPrimary },
+  stGoal: { fontSize: 12, color: colors.textSecondary },
+  seatBadge: { backgroundColor: colors.lightOrangeBg, paddingHorizontal: 8, paddingVertical: 3, borderRadius: 6, marginRight: 6 },
+  seatText: { fontSize: 11, fontWeight: '600', color: colors.primary },
+  since: { fontSize: 11, color: colors.textLight },
 });
