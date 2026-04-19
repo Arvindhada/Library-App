@@ -9,42 +9,67 @@ import SeatBox from '../../src/components/SeatBox';
 
 export default function SeatManager() {
   const router = useRouter();
-  const { getOwnerLibrary, updateLibrarySeats } = useApp();
+  const { getOwnerLibrary, updateLibrarySeats, students } = useApp();
   const lib = getOwnerLibrary();
 
   const [totalInput, setTotalInput] = useState(String(lib?.totalSeats || 80));
-  const [seats, setSeats] = useState(() => {
-    const total = lib?.totalSeats || 80;
-    const booked = lib?.bookedSeats || 0;
+  
+  // Create grid based on total seats, mapping students to their seat numbers
+  const total = parseInt(totalInput, 10) || 80;
+  const todayStr = new Date().toISOString().split('T')[0];
+  
+  const seats = useMemo(() => {
     const arr = [];
-    for (let i = 0; i < total; i++) arr.push(i < booked);
+    for (let i = 1; i <= total; i++) {
+      const student = students.find((s) => parseInt(s.seat, 10) === i);
+      const isFeeDue = student ? student.expiry < todayStr : false;
+      arr.push({
+        number: i,
+        booked: !!student,
+        studentName: student?.name,
+        studentPhone: student?.phone,
+        studentExpiry: student?.expiry,
+        studentPlan: student?.plan,
+        isFeeDue,
+      });
+    }
     return arr;
-  });
+  }, [total, students, todayStr]);
 
-  const vacant = useMemo(() => seats.filter((s) => !s).length, [seats]);
-  const booked = useMemo(() => seats.filter((s) => s).length, [seats]);
+  const vacant = seats.filter((s) => !s.booked).length;
+  const booked = seats.filter((s) => s.booked).length;
 
-  // Generate new grid when total changes
   const handleGenerateGrid = () => {
     const num = parseInt(totalInput, 10);
     if (!num || num < 1 || num > 500) {
       Alert.alert('Error', 'Enter a valid number (1-500)');
       return;
     }
-    const arr = [];
-    for (let i = 0; i < num; i++) arr.push(false); // all available
-    setSeats(arr);
+    updateLibrarySeats(lib.id, num - booked, booked);
+    Alert.alert('Updated', `Library capacity updated to ${num} seats`);
   };
 
-  const toggleSeat = (idx) => {
-    setSeats((prev) => { const n = [...prev]; n[idx] = !n[idx]; return n; });
+  const onSeatPress = (seat) => {
+    if (seat.booked) {
+      const statusText = seat.isFeeDue
+        ? `\n⚠️ Fee Status: Due (Expired: ${seat.studentExpiry})`
+        : `\n✅ Fee Status: Paid (Exp: ${seat.studentExpiry})`;
+      Alert.alert(
+        `Seat ${seat.number} — ${seat.studentName}`,
+        `Plan: ${seat.studentPlan}${statusText}`,
+        [
+          { text: 'Close', style: 'cancel' },
+          { text: 'Manage Student', onPress: () => router.push('/owner/manage-students') },
+        ]
+      );
+    } else {
+      Alert.alert('Vacant Seat', `Seat ${seat.number} is available.\nGo to Manage Students to assign it.`);
+    }
   };
 
   const saveChanges = () => {
     updateLibrarySeats(lib.id, vacant, booked);
-    Alert.alert('Saved!', `Total: ${seats.length}, Vacant: ${vacant}, Booked: ${booked}`, [
-      { text: 'OK', onPress: () => router.back() },
-    ]);
+    router.back();
   };
 
   return (
@@ -85,6 +110,7 @@ export default function SeatManager() {
             <View style={s.legendRight}>
               <View style={[s.legendDot, { backgroundColor: colors.success }]} /><Text style={s.legendText}>Available</Text>
               <View style={[s.legendDot, { backgroundColor: colors.danger, marginLeft: 12 }]} /><Text style={s.legendText}>Booked</Text>
+              <View style={[s.legendDot, { backgroundColor: colors.warning, marginLeft: 12 }]} /><Text style={s.legendText}>Fee Due</Text>
             </View>
           </View>
 
@@ -95,8 +121,13 @@ export default function SeatManager() {
               keyExtractor={(_, i) => String(i)}
               numColumns={8}
               scrollEnabled={false}
-              renderItem={({ item, index }) => (
-                <SeatBox seatNumber={index + 1} isBooked={item} onPress={() => toggleSeat(index)} />
+              renderItem={({ item }) => (
+                <SeatBox
+                  seatNumber={item.number}
+                  isBooked={item.booked}
+                  isFeeDue={item.isFeeDue}
+                  onPress={() => onSeatPress(item)}
+                />
               )}
             />
           </View>

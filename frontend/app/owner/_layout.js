@@ -8,6 +8,7 @@ export default function OwnerLayout() {
       <Stack.Screen name="otp" />
       <Stack.Screen name="tabs" />
       <Stack.Screen name="seat-manager" />
+      <Stack.Screen name="manage-students" />
       <Stack.Screen name="add-library" />
     </Stack>
   );
