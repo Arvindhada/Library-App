@@ -31,9 +31,12 @@ dist/
 dist
 
 # Environment files (comprehensive coverage)
-
 *token.json*
 *credentials.json*
+.env
+.env.*
+*.env
+firebase-admin-key.json
 
 # Logs and debug files
 npm-debug.log*
@@ -41,10 +44,12 @@ yarn-debug.log*
 yarn-error.log*
 .pnpm-debug.log*
 dump.rdb
+*.log
 
 # System files
 .DS_Store
 *.pem
+*.key
 
 # Python
 __pycache__/
@@ -80,11 +85,4 @@ memory/test_credentials.md
 
 # Mobile development
 android-sdk/-e 
-# Environment and credential files
-.env
-.env.*
-*.env
-credentials.json
-*.pem
-*.key
 .credentials
