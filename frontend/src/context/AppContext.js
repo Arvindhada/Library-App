@@ -26,8 +26,12 @@ export const AppProvider = ({ children }) => {
     { id: '2', name: 'Priya Verma', phone: '9123456789', seat: '05', plan: 'Half Time', expiry: '2026-04-15', status: 'Active' },
   ]);
   const [payments, setPayments] = useState([
-    { id: '1', studentId: '1', amount: 800, date: '2024-04-15', method: 'UPI' },
-    { id: '2', studentId: '2', amount: 400, date: '2024-04-16', method: 'Cash' },
+    { id: '1', studentId: '1', amount: 800, date: '2026-04-15', method: 'UPI' },
+    { id: '2', studentId: '2', amount: 400, date: '2026-04-16', method: 'Cash' },
+    { id: '3', studentId: '1', amount: 800, date: '2026-03-10', method: 'UPI' },
+    { id: '4', studentId: '2', amount: 400, date: '2026-03-12', method: 'Cash' },
+    { id: '5', studentId: '1', amount: 800, date: '2026-02-08', method: 'UPI' },
+    { id: '6', studentId: '2', amount: 400, date: '2026-01-20', method: 'Card' },
   ]);
   const [activities, setActivities] = useState([
     { id: '1', type: 'join', text: 'Aman Sharma joined the library', time: '2h ago' },

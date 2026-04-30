@@ -52,6 +52,10 @@ export default function ManageStudents() {
     });
   }, [parsedStudents, activeTab]);
 
+  const getInitials = (name) => {
+    return name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2);
+  };
+
   const openForm = (student = null) => {
     if (student) {
       setEditingStudent(student);
@@ -133,45 +137,62 @@ export default function ManageStudents() {
 
   const renderStudent = ({ item }) => {
     const statusColor = item.isDue ? colors.danger : item.isSoon ? colors.warning : colors.success;
-    const statusLabel = item.isDue ? 'Fee Due' : item.isSoon ? 'Due Soon' : 'Paid';
+    const statusLabel = item.isDue ? 'Fee Due' : item.isSoon ? 'Expiring Soon' : 'Active';
+    const statusIcon = item.isDue ? 'alert-circle' : item.isSoon ? 'time' : 'checkmark-circle';
 
     return (
       <View style={s.card}>
+        {/* Card Top Row */}
         <View style={s.cardHeader}>
           <View style={[s.avatar, { backgroundColor: statusColor }]}>
-            <Ionicons name="person" size={20} color={colors.white} />
+            <Text style={s.avatarText}>{getInitials(item.name)}</Text>
           </View>
-          <View style={{ flex: 1 }}>
+          <View style={{ flex: 1, marginLeft: 14 }}>
             <Text style={s.stName}>{item.name}</Text>
-            <Text style={s.stPhone}>{item.phone}</Text>
+            <Text style={s.stPhone}>📞 {item.phone}</Text>
           </View>
-          <View style={[s.statusBadge, { backgroundColor: statusColor + '15' }]}>
+          <View style={[s.statusBadge, { backgroundColor: statusColor + '15', borderWidth: 1, borderColor: statusColor + '30' }]}>
+            <Ionicons name={statusIcon} size={12} color={statusColor} />
             <Text style={[s.statusText, { color: statusColor }]}>{statusLabel}</Text>
           </View>
         </View>
 
-        <View style={s.cardInfo}>
-          <View style={s.infoItem}><Ionicons name="grid-outline" size={14} color={colors.textLight} /><Text style={s.infoText}>Seat: {item.seat}</Text></View>
-          <View style={s.infoItem}><Ionicons name="calendar-outline" size={14} color={colors.textLight} /><Text style={s.infoText}>Exp: {item.expiry}</Text></View>
-          <View style={s.infoItem}><Text style={s.planTag}>{item.plan}</Text></View>
+        {/* Info Row */}
+        <View style={s.infoStrip}>
+          <View style={s.infoChip}>
+            <Ionicons name="grid-outline" size={13} color={colors.primary} />
+            <Text style={s.infoChipText}>Seat {item.seat}</Text>
+          </View>
+          <View style={s.infoChip}>
+            <Ionicons name="calendar-outline" size={13} color={colors.primary} />
+            <Text style={s.infoChipText}>Exp: {item.expiry}</Text>
+          </View>
+          <View style={[s.infoChip, { backgroundColor: colors.lightOrangeBg }]}>
+            <Text style={[s.infoChipText, { color: colors.primary, fontWeight: 'bold' }]}>{item.plan}</Text>
+          </View>
         </View>
 
+        {/* Actions Row */}
         <View style={s.actions}>
           <TouchableOpacity style={s.feeBtn} onPress={() => openPaymentModal(item)}>
-            <Ionicons name="cash-outline" size={18} color={colors.success} />
-            <Text style={s.feeText}>Collect Fee</Text>
+            <Ionicons name="cash-outline" size={16} color={colors.white} />
+            <Text style={s.feeText}>Collect ₹{item.fee}</Text>
           </TouchableOpacity>
           
           {(item.isDue || item.isSoon) && (
             <TouchableOpacity style={s.remindBtnSmall} onPress={() => handleReminder(item)}>
-              <FontAwesome name="whatsapp" size={18} color="#25D366" />
+              <FontAwesome name="whatsapp" size={16} color="#25D366" />
               <Text style={s.remindTextSmall}>Remind</Text>
             </TouchableOpacity>
           )}
 
           <View style={s.rightActions}>
-            <TouchableOpacity onPress={() => openForm(item)} style={s.iconBtn}><Ionicons name="create-outline" size={20} color={colors.primary} /></TouchableOpacity>
-            <TouchableOpacity onPress={() => confirmDelete(item.id)} style={s.iconBtn}><Ionicons name="trash-outline" size={20} color={colors.danger} /></TouchableOpacity>
+            <TouchableOpacity onPress={() => openForm(item)} style={s.iconBtn}>
+              <Ionicons name="create-outline" size={18} color={colors.primary} />
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => confirmDelete(item.id)} style={[s.iconBtn, { backgroundColor: '#FEF2F2' }]}>
+              <Ionicons name="trash-outline" size={18} color={colors.danger} />
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -180,31 +201,57 @@ export default function ManageStudents() {
 
   return (
     <View style={s.container}>
+      {/* Orange Header */}
       <View style={s.header}>
-        <TouchableOpacity onPress={() => router.back()} style={s.backBtn}><Ionicons name="arrow-back" size={24} color={colors.textPrimary} /></TouchableOpacity>
-        <Text style={s.heading}>Manage Students</Text>
-        <TouchableOpacity onPress={() => openForm()} style={s.addBtn}><Ionicons name="add" size={24} color={colors.white} /></TouchableOpacity>
+        <View style={s.headerContent}>
+          <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
+            <Ionicons name="arrow-back" size={22} color={colors.white} />
+          </TouchableOpacity>
+          <View>
+            <Text style={s.heading}>Manage Students</Text>
+            <Text style={s.subHeading}>{students.length} total students</Text>
+          </View>
+          <TouchableOpacity onPress={() => openForm()} style={s.addBtn}>
+            <Ionicons name="add" size={24} color={colors.white} />
+          </TouchableOpacity>
+        </View>
+        <View style={s.headerCurve} />
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
-        {/* Summary Card */}
-        <View style={s.summaryCard}>
-          <View style={s.sumBox}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 30 }}>
+        {/* Summary Cards */}
+        <View style={s.summaryRow}>
+          <View style={[s.summaryCard, { borderLeftColor: colors.success }]}>
             <Text style={s.sumLbl}>Collected</Text>
-            <Text style={s.sumVal}>₹{totalCollected.toLocaleString()}</Text>
+            <Text style={[s.sumVal, { color: colors.success }]}>₹{totalCollected.toLocaleString()}</Text>
           </View>
-          <View style={s.divider} />
-          <View style={s.sumBox}>
-            <Text style={s.sumLbl}>Total Due</Text>
+          <View style={[s.summaryCard, { borderLeftColor: colors.danger }]}>
+            <Text style={s.sumLbl}>Pending</Text>
             <Text style={[s.sumVal, { color: colors.danger }]}>₹{totalPending.toLocaleString()}</Text>
+          </View>
+          <View style={[s.summaryCard, { borderLeftColor: colors.info }]}>
+            <Text style={s.sumLbl}>Total</Text>
+            <Text style={[s.sumVal, { color: colors.info }]}>{students.length}</Text>
           </View>
         </View>
 
-        {/* Tabs */}
+        {/* Filter Tabs */}
         <View style={s.tabRow}>
-          {['All', 'Paid', 'Due'].map(t => (
-            <TouchableOpacity key={t} style={[s.tab, activeTab === t && s.tabActive]} onPress={() => setActiveTab(t)}>
-              <Text style={[s.tabText, activeTab === t && s.tabTextActive]}>{t}</Text>
+          {[
+            { key: 'All', icon: 'people', count: parsedStudents.length },
+            { key: 'Paid', icon: 'checkmark-circle', count: parsedStudents.filter(s => !s.isDue).length },
+            { key: 'Due', icon: 'alert-circle', count: parsedStudents.filter(s => s.isDue || s.isSoon).length },
+          ].map(t => (
+            <TouchableOpacity 
+              key={t.key} 
+              style={[s.tab, activeTab === t.key && s.tabActive]} 
+              onPress={() => setActiveTab(t.key)}
+            >
+              <Ionicons name={t.icon} size={15} color={activeTab === t.key ? colors.white : colors.textSecondary} />
+              <Text style={[s.tabText, activeTab === t.key && s.tabTextActive]}>{t.key}</Text>
+              <View style={[s.tabCount, activeTab === t.key && { backgroundColor: 'rgba(255,255,255,0.25)' }]}>
+                <Text style={[s.tabCountText, activeTab === t.key && { color: colors.white }]}>{t.count}</Text>
+              </View>
             </TouchableOpacity>
           ))}
         </View>
@@ -216,7 +263,13 @@ export default function ManageStudents() {
           renderItem={renderStudent}
           scrollEnabled={false}
           contentContainerStyle={s.list}
-          ListEmptyComponent={<Text style={s.empty}>No students found in this category.</Text>}
+          ListEmptyComponent={
+            <View style={s.emptyState}>
+              <Ionicons name="people-outline" size={60} color={colors.textLight} />
+              <Text style={s.emptyText}>No students in this category</Text>
+              <Text style={s.emptySubText}>Tap + to add a new student</Text>
+            </View>
+          }
         />
       </ScrollView>
 
@@ -224,30 +277,39 @@ export default function ManageStudents() {
       <Modal visible={modalVisible} animationType="slide" transparent>
         <View style={s.modalOverlay}>
           <View style={s.modalContent}>
-            <Text style={s.modalTitle}>{editingStudent ? 'Edit Student' : 'Add New Student'}</Text>
+            <View style={s.modalHandle} />
+            <View style={s.modalHeader}>
+              <Text style={s.modalTitle}>{editingStudent ? 'Edit Student' : 'Add New Student'}</Text>
+              <TouchableOpacity onPress={() => setModalVisible(false)}>
+                <Ionicons name="close-circle" size={28} color={colors.textLight} />
+              </TouchableOpacity>
+            </View>
             
-            <TextInput style={s.input} placeholder="Student Name" value={form.name} onChangeText={(t)=>setForm({...form, name: t})} />
-            <TextInput style={s.input} placeholder="Phone Number" value={form.phone} onChangeText={(t)=>setForm({...form, phone: t})} keyboardType="phone-pad" />
+            <Text style={s.inputLabel}>Full Name</Text>
+            <TextInput style={s.input} placeholder="e.g. Rahul Sharma" placeholderTextColor={colors.textLight} value={form.name} onChangeText={(t) => setForm({...form, name: t})} />
+            
+            <Text style={s.inputLabel}>Phone Number</Text>
+            <TextInput style={s.input} placeholder="10-digit number" placeholderTextColor={colors.textLight} value={form.phone} onChangeText={(t) => setForm({...form, phone: t})} keyboardType="phone-pad" />
             
             <View style={s.row}>
-              <View style={{ flex: 1, marginRight: 8 }}>
-                <Text style={s.inputLabel}>Seat</Text>
-                <TextInput style={s.input} placeholder="No." value={form.seat} onChangeText={(t)=>setForm({...form, seat: t})} keyboardType="number-pad" />
+              <View style={{ flex: 1, marginRight: 10 }}>
+                <Text style={s.inputLabel}>Seat No.</Text>
+                <TextInput style={s.input} placeholder="e.g. 12" placeholderTextColor={colors.textLight} value={form.seat} onChangeText={(t) => setForm({...form, seat: t})} keyboardType="number-pad" />
               </View>
-              <View style={{ flex: 2 }}>
-                <Text style={s.inputLabel}>Plan Type</Text>
-                <View style={s.planRow}>
-                  {['Half Time', 'Full Time'].map(p => (
-                    <TouchableOpacity 
-                      key={p} 
-                      style={[s.pBtn, form.plan === p && s.pBtnActive]} 
-                      onPress={() => setForm({...form, plan: p})}
-                    >
-                      <Text style={[s.pText, form.plan === p && s.pTextActive]}>{p}</Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
+            </View>
+            
+            <Text style={s.inputLabel}>Plan Type</Text>
+            <View style={s.planRow}>
+              {['Half Time', 'Full Time'].map(p => (
+                <TouchableOpacity 
+                  key={p} 
+                  style={[s.pBtn, form.plan === p && s.pBtnActive]} 
+                  onPress={() => setForm({...form, plan: p})}
+                >
+                  <Ionicons name={p === 'Half Time' ? 'sunny-outline' : 'moon-outline'} size={16} color={form.plan === p ? colors.primary : colors.textSecondary} />
+                  <Text style={[s.pText, form.plan === p && s.pTextActive]}>{p}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
             
             <View style={s.modalActions}>
@@ -255,6 +317,7 @@ export default function ManageStudents() {
                 <Text style={s.cancelModalText}>Cancel</Text>
               </TouchableOpacity>
               <TouchableOpacity style={s.saveModal} onPress={handleSave}>
+                <Ionicons name="checkmark" size={18} color={colors.white} />
                 <Text style={s.saveModalText}>Save Student</Text>
               </TouchableOpacity>
             </View>
@@ -263,28 +326,45 @@ export default function ManageStudents() {
       </Modal>
 
       {/* Payment Modal */}
-      <Modal visible={paymentModalVisible} animationType="fade" transparent>
+      <Modal visible={paymentModalVisible} animationType="slide" transparent>
         <View style={s.modalOverlay}>
-          <View style={[s.modalContent, { borderTopLeftRadius: 20, borderTopRightRadius: 20 }]}>
-            <Text style={s.modalTitle}>Collect Fee ({selectedStudent?.name})</Text>
+          <View style={s.modalContent}>
+            <View style={s.modalHandle} />
             
-            <Text style={s.inputLabel}>Amount to Collect (₹)</Text>
+            <View style={s.paymentHeader}>
+              <View style={s.paymentAvatar}>
+                <Text style={s.paymentAvatarText}>{selectedStudent ? getInitials(selectedStudent.name) : ''}</Text>
+              </View>
+              <View>
+                <Text style={s.modalTitle}>Collect Fee</Text>
+                <Text style={s.paymentStudentName}>{selectedStudent?.name}</Text>
+              </View>
+            </View>
+            
+            <Text style={s.inputLabel}>Amount (₹)</Text>
             <TextInput 
-              style={s.input} 
+              style={[s.input, s.amountInput]} 
               value={paymentForm.amount} 
-              onChangeText={(t)=>setPaymentForm({...paymentForm, amount: t})} 
+              onChangeText={(t) => setPaymentForm({...paymentForm, amount: t})} 
               keyboardType="number-pad"
+              placeholder="0"
+              placeholderTextColor={colors.textLight}
             />
 
             <Text style={s.inputLabel}>Payment Method</Text>
             <View style={s.methodRow}>
-              {['UPI', 'Cash', 'Card'].map(m => (
+              {[
+                { key: 'UPI', icon: 'phone-portrait-outline' },
+                { key: 'Cash', icon: 'cash-outline' },
+                { key: 'Card', icon: 'card-outline' },
+              ].map(m => (
                 <TouchableOpacity 
-                  key={m} 
-                  style={[s.methodBtn, paymentForm.method === m && s.methodBtnActive]} 
-                  onPress={() => setPaymentForm({...paymentForm, method: m})}
+                  key={m.key} 
+                  style={[s.methodBtn, paymentForm.method === m.key && s.methodBtnActive]} 
+                  onPress={() => setPaymentForm({...paymentForm, method: m.key})}
                 >
-                  <Text style={[s.methodText, paymentForm.method === m && s.methodTextActive]}>{m}</Text>
+                  <Ionicons name={m.icon} size={18} color={paymentForm.method === m.key ? colors.primary : colors.textSecondary} />
+                  <Text style={[s.methodText, paymentForm.method === m.key && s.methodTextActive]}>{m.key}</Text>
                 </TouchableOpacity>
               ))}
             </View>
@@ -294,6 +374,7 @@ export default function ManageStudents() {
                 <Text style={s.cancelModalText}>Close</Text>
               </TouchableOpacity>
               <TouchableOpacity style={s.savePayment} onPress={handleCollectPayment}>
+                <Ionicons name="checkmark-circle" size={18} color={colors.white} />
                 <Text style={s.saveModalText}>Record Payment</Text>
               </TouchableOpacity>
             </View>
@@ -305,45 +386,52 @@ export default function ManageStudents() {
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bgLight },
-  header: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingTop: 52, paddingBottom: 12, backgroundColor: colors.white, justifyContent: 'space-between' },
-  backBtn: { padding: 4 },
-  heading: { fontSize: 20, fontWeight: 'bold', color: colors.textPrimary },
-  addBtn: { width: 36, height: 36, borderRadius: 18, backgroundColor: colors.primary, justifyContent: 'center', alignItems: 'center' },
+  container: { flex: 1, backgroundColor: '#F9FAFB' },
   
-  // Summary Card
-  summaryCard: { flexDirection: 'row', backgroundColor: colors.white, margin: 16, borderRadius: 16, padding: 20, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.1, shadowRadius: 4 },
-  sumBox: { flex: 1, alignItems: 'center' },
-  sumLbl: { fontSize: 12, color: colors.textSecondary, marginBottom: 4 },
-  sumVal: { fontSize: 18, fontWeight: 'bold', color: colors.success },
-  divider: { width: 1, backgroundColor: colors.cardBorder, height: '100%' },
+  // HEADER
+  header: { backgroundColor: colors.primary, paddingTop: 55, paddingBottom: 0 },
+  headerContent: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingBottom: 22 },
+  backBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
+  heading: { fontSize: 20, fontWeight: 'bold', color: colors.white, textAlign: 'center' },
+  subHeading: { fontSize: 13, color: 'rgba(255,255,255,0.8)', textAlign: 'center', marginTop: 2 },
+  addBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: 'rgba(255,255,255,0.2)', justifyContent: 'center', alignItems: 'center' },
+  headerCurve: { height: 28, backgroundColor: '#F9FAFB', borderTopLeftRadius: 28, borderTopRightRadius: 28 },
 
-  // Tabs
-  tabRow: { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 12, gap: 8 },
-  tab: { paddingHorizontal: 20, paddingVertical: 8, borderRadius: 20, backgroundColor: colors.white, borderWidth: 1, borderColor: colors.cardBorder },
+  // SUMMARY
+  summaryRow: { flexDirection: 'row', paddingHorizontal: 16, marginTop: -6, gap: 10, marginBottom: 20 },
+  summaryCard: { flex: 1, backgroundColor: colors.white, borderRadius: 16, paddingVertical: 14, paddingHorizontal: 10, alignItems: 'center', borderLeftWidth: 4, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4 },
+  sumLbl: { fontSize: 11, color: colors.textSecondary, marginBottom: 4, fontWeight: '600' },
+  sumVal: { fontSize: 17, fontWeight: 'bold' },
+
+  // TABS
+  tabRow: { flexDirection: 'row', paddingHorizontal: 16, marginBottom: 18, gap: 8 },
+  tab: { flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 14, backgroundColor: colors.white, gap: 5, borderWidth: 1, borderColor: '#F3F4F6', elevation: 1, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.03, shadowRadius: 2 },
   tabActive: { backgroundColor: colors.primary, borderColor: colors.primary },
-  tabText: { fontSize: 13, color: colors.textSecondary, fontWeight: '600' },
+  tabText: { fontSize: 12, color: colors.textSecondary, fontWeight: '700' },
   tabTextActive: { color: colors.white },
+  tabCount: { backgroundColor: '#F3F4F6', borderRadius: 8, paddingHorizontal: 5, paddingVertical: 1 },
+  tabCountText: { fontSize: 10, color: colors.textSecondary, fontWeight: 'bold' },
 
+  // STUDENT CARDS
   list: { paddingHorizontal: 16 },
-  card: { backgroundColor: colors.white, borderRadius: 16, padding: 16, marginBottom: 12, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.1, shadowRadius: 2 },
-  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
-  avatar: { width: 44, height: 44, borderRadius: 22, justifyContent: 'center', alignItems: 'center', marginRight: 12 },
-  stName: { fontSize: 16, fontWeight: '700', color: colors.textPrimary },
-  stPhone: { fontSize: 13, color: colors.textSecondary },
-  statusBadge: { paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 },
+  card: { backgroundColor: colors.white, borderRadius: 20, padding: 18, marginBottom: 14, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.06, shadowRadius: 6 },
+  cardHeader: { flexDirection: 'row', alignItems: 'center', marginBottom: 14 },
+  avatar: { width: 48, height: 48, borderRadius: 24, justifyContent: 'center', alignItems: 'center' },
+  avatarText: { color: colors.white, fontWeight: 'bold', fontSize: 17 },
+  stName: { fontSize: 17, fontWeight: 'bold', color: colors.textPrimary },
+  stPhone: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },
+  statusBadge: { flexDirection: 'row', alignItems: 'center', gap: 4, paddingHorizontal: 10, paddingVertical: 5, borderRadius: 10 },
   statusText: { fontSize: 11, fontWeight: 'bold' },
   
-  cardInfo: { flexDirection: 'row', justifyContent: 'space-between', paddingBottom: 12, borderBottomWidth: 1, borderColor: colors.bgLight, marginBottom: 12 },
-  infoItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
-  infoText: { fontSize: 12, color: colors.textSecondary },
-  planTag: { fontSize: 11, fontWeight: '600', color: colors.primary, backgroundColor: colors.lightOrangeBg, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 4 },
+  infoStrip: { flexDirection: 'row', gap: 8, marginBottom: 16, flexWrap: 'wrap' },
+  infoChip: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#F9FAFB', paddingHorizontal: 10, paddingVertical: 6, borderRadius: 10 },
+  infoChipText: { fontSize: 12, color: colors.textSecondary, fontWeight: '600' },
   
-  actions: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  feeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.success + '10', paddingHorizontal: 10, paddingVertical: 10, borderRadius: 10 },
-  feeText: { fontSize: 12, fontWeight: 'bold', color: colors.success },
+  actions: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  feeBtn: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: colors.success, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 12 },
+  feeText: { fontSize: 12, fontWeight: 'bold', color: colors.white },
   
-  remindBtnSmall: { flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#25D36610', paddingHorizontal: 10, paddingVertical: 10, borderRadius: 10 },
+  remindBtnSmall: { flexDirection: 'row', alignItems: 'center', gap: 5, backgroundColor: '#F0FDF4', paddingHorizontal: 12, paddingVertical: 10, borderRadius: 12, borderWidth: 1, borderColor: '#BBF7D0' },
   remindTextSmall: { fontSize: 12, fontWeight: 'bold', color: '#25D366' },
   
   rightActions: { flexDirection: 'row', gap: 8 },
