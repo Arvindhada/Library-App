@@ -3,6 +3,21 @@ const Library = require('../models/Library');
 const { protect } = require('../middlewares/authMiddleware');
 const router = express.Router();
 
+// @route   GET /api/libraries/my-library
+// @desc    Get the library owned by the logged-in user
+// @access  Private
+router.get('/my-library', protect, async (req, res, next) => {
+  try {
+    const library = await Library.findOne({ owner_id: req.user._id });
+    if (!library) {
+      return res.json(null); // No library yet
+    }
+    res.json(library);
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post('/', protect, async (req, res, next) => {
   try {
     // Check if user already has a library

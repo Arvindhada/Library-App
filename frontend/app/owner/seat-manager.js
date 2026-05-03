@@ -1,6 +1,6 @@
-// Seat Manager — Premium Redesign
+// Seat Manager — Backend Connected
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, TextInput, Alert, KeyboardAvoidingView, Platform, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import colors from '../../src/constants/colors';
@@ -9,35 +9,35 @@ import SeatBox from '../../src/components/SeatBox';
 
 export default function SeatManager() {
   const router = useRouter();
-  const { getOwnerLibrary, updateLibrarySeats, students } = useApp();
-  const lib = getOwnerLibrary();
+  const { currentLibrary, currentBookings, fetchDashboardData, loading } = useApp();
 
-  const [totalInput, setTotalInput] = useState(String(lib?.totalSeats || 80));
+  const total = currentLibrary?.total_seats || 0;
+  const [totalInput, setTotalInput] = useState(String(total));
 
-  const total = parseInt(totalInput, 10) || 80;
-  const todayStr = new Date().toISOString().split('T')[0];
+  const today = new Date();
 
   const seats = useMemo(() => {
     const arr = [];
-    for (let i = 1; i <= total; i++) {
-      const student = students.find((s) => parseInt(s.seat, 10) === i);
-      const isFeeDue = student ? student.expiry < todayStr : false;
+    const totalSeats = parseInt(totalInput, 10) || total || 80;
+    for (let i = 1; i <= totalSeats; i++) {
+      const booking = currentBookings.find(b => b.status === 'Active' && parseInt(b.seat, 10) === i);
+      const isFeeDue = booking ? new Date(booking.endDate) < today : false;
       arr.push({
         number: i,
-        booked: !!student,
-        studentName: student?.name,
-        studentPhone: student?.phone,
-        studentExpiry: student?.expiry,
-        studentPlan: student?.plan,
+        booked: !!booking,
+        studentName: booking?.student?.name,
+        studentPhone: booking?.student?.phone,
+        studentExpiry: booking ? new Date(booking.endDate).toLocaleDateString() : null,
+        studentPlan: booking?.shift,
         isFeeDue,
       });
     }
     return arr;
-  }, [total, students, todayStr]);
+  }, [totalInput, currentBookings, total]);
 
-  const vacant = seats.filter((s) => !s.booked).length;
-  const booked = seats.filter((s) => s.booked).length;
-  const feeDue = seats.filter((s) => s.isFeeDue).length;
+  const vacant = seats.filter(s => !s.booked).length;
+  const booked = seats.filter(s => s.booked).length;
+  const feeDue = seats.filter(s => s.isFeeDue).length;
 
   const handleGenerateGrid = () => {
     const num = parseInt(totalInput, 10);
@@ -45,15 +45,13 @@ export default function SeatManager() {
       Alert.alert('Error', 'Enter a valid number (1-500)');
       return;
     }
-    updateLibrarySeats(lib.id, num - booked, booked);
-    Alert.alert('Updated', `Library capacity updated to ${num} seats`);
   };
 
   const onSeatPress = (seat) => {
     if (seat.booked) {
       const statusText = seat.isFeeDue
-        ? `\n⚠️ Fee Status: Due (Expired: ${seat.studentExpiry})`
-        : `\n✅ Fee Status: Paid (Exp: ${seat.studentExpiry})`;
+        ? `\n⚠️ Fee Status: Overdue (Expired: ${seat.studentExpiry})`
+        : `\n✅ Fee Status: Active (Exp: ${seat.studentExpiry})`;
       Alert.alert(
         `Seat ${seat.number} — ${seat.studentName}`,
         `Plan: ${seat.studentPlan}${statusText}`,
@@ -63,12 +61,14 @@ export default function SeatManager() {
         ]
       );
     } else {
-      Alert.alert('Vacant Seat', `Seat ${seat.number} is available.\nGo to Manage Students to assign it.`);
+      Alert.alert('Vacant Seat', `Seat ${seat.number} is available.\nGo to Manage Students to assign it.`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Add Student', onPress: () => router.push('/owner/manage-students') },
+      ]);
     }
   };
 
   const saveChanges = () => {
-    updateLibrarySeats(lib.id, vacant, booked);
     router.back();
   };
 
@@ -84,14 +84,18 @@ export default function SeatManager() {
             </TouchableOpacity>
             <View>
               <Text style={s.heading}>Seat Manager</Text>
-              <Text style={s.subHeading}>{lib?.name || 'Your Library'}</Text>
+              <Text style={s.subHeading}>{currentLibrary?.name || 'Your Library'}</Text>
             </View>
             <View style={{ width: 44 }} />
           </View>
           <View style={s.headerCurve} />
         </View>
 
-        <ScrollView showsVerticalScrollIndicator={false} style={{ flex: 1 }}>
+        <ScrollView 
+          showsVerticalScrollIndicator={false} 
+          style={{ flex: 1 }}
+          refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchDashboardData} colors={[colors.primary]} />}
+        >
 
           {/* ── COUNT PILLS ── */}
           <View style={s.pillRow}>

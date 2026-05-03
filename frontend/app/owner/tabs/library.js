@@ -1,74 +1,118 @@
-// Owner Library — Fully functional Edit form
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+// Owner Library — Backend Connected Edit form
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, TextInput, Alert, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import colors from '../../../src/constants/colors';
 import { useApp } from '../../../src/context/AppContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios';
+import { API_ENDPOINTS } from '../../../src/services/apiConfig';
 import { FACILITIES_LIST } from '../../../src/constants/dummyData';
 
 export default function OwnerLibrary() {
-  const { getOwnerLibrary, updateOwnerLibrary } = useApp();
-  const lib = getOwnerLibrary();
+  const { currentLibrary, fetchDashboardData } = useApp();
 
   const [editing, setEditing] = useState(false);
-  const [name, setName] = useState(lib?.name || '');
-  const [address, setAddress] = useState(lib?.address || '');
-  const [area, setArea] = useState(lib?.area || '');
-  const [totalSeats, setTotalSeats] = useState(String(lib?.totalSeats || ''));
-  const [whatsapp, setWhatsapp] = useState(lib?.whatsapp || '');
-  const [openTime, setOpenTime] = useState(lib?.openTime || '');
-  const [halfFee, setHalfFee] = useState(String(lib?.halfTime?.fee || ''));
-  const [fullFee, setFullFee] = useState(String(lib?.fullTime?.fee || ''));
-  const [selectedFacilities, setSelectedFacilities] = useState(lib?.facilities || []);
+  const [saving, setSaving] = useState(false);
+  const [name, setName] = useState('');
+  const [address, setAddress] = useState('');
+  const [area, setArea] = useState('');
+  const [totalSeats, setTotalSeats] = useState('');
+  const [whatsapp, setWhatsapp] = useState('');
+  const [openTime, setOpenTime] = useState('');
+  const [halfFee, setHalfFee] = useState('');
+  const [fullFee, setFullFee] = useState('');
+  const [selectedFacilities, setSelectedFacilities] = useState([]);
+
+  // Load real library data into form fields
+  useEffect(() => {
+    if (currentLibrary) {
+      setName(currentLibrary.name || '');
+      setAddress(currentLibrary.address || '');
+      setArea(currentLibrary.area || '');
+      setTotalSeats(String(currentLibrary.total_seats || ''));
+      setWhatsapp(currentLibrary.whatsapp || '');
+      setOpenTime(currentLibrary.openTime || '');
+      setHalfFee(String(currentLibrary.halfTime?.fee || ''));
+      setFullFee(String(currentLibrary.fullTime?.fee || ''));
+      setSelectedFacilities(currentLibrary.facilities || []);
+    }
+  }, [currentLibrary]);
 
   const toggleFacility = (id) => {
     setSelectedFacilities((prev) => prev.includes(id) ? prev.filter((f) => f !== id) : [...prev, id]);
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     if (!name.trim() || !address.trim()) {
       Alert.alert('Error', 'Name and Address are required');
       return;
     }
-    updateOwnerLibrary({
-      name: name.trim(),
-      address: address.trim(),
-      area: area.trim(),
-      totalSeats: parseInt(totalSeats, 10) || lib.totalSeats,
-      whatsapp: whatsapp.trim(),
-      openTime: openTime.trim(),
-      halfTime: { ...lib.halfTime, fee: parseInt(halfFee, 10) || lib.halfTime.fee },
-      fullTime: { ...lib.fullTime, fee: parseInt(fullFee, 10) || lib.fullTime.fee },
-      facilities: selectedFacilities,
-    });
-    setEditing(false);
-    Alert.alert('Saved!', 'Library details updated successfully');
+    if (!currentLibrary?._id) {
+      Alert.alert('Error', 'No library found. Please register first.');
+      return;
+    }
+
+    setSaving(true);
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      await axios.put(
+        `${API_ENDPOINTS.LIBRARIES}/${currentLibrary._id}`,
+        {
+          name: name.trim(),
+          address: address.trim(),
+          area: area.trim(),
+          total_seats: parseInt(totalSeats, 10) || currentLibrary.total_seats,
+          whatsapp: whatsapp.trim(),
+          openTime: openTime.trim(),
+          halfTime: { fee: parseInt(halfFee, 10) || 0 },
+          fullTime: { fee: parseInt(fullFee, 10) || 0 },
+          facilities: selectedFacilities,
+        },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      await fetchDashboardData(); // Refresh context with new data
+      setEditing(false);
+      Alert.alert('✅ Saved!', 'Library details updated successfully');
+    } catch (error) {
+      Alert.alert('Error', error.response?.data?.message || 'Could not save. Try again.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleCancel = () => {
-    // Reset to lib values
-    setName(lib?.name || '');
-    setAddress(lib?.address || '');
-    setArea(lib?.area || '');
-    setTotalSeats(String(lib?.totalSeats || ''));
-    setWhatsapp(lib?.whatsapp || '');
-    setOpenTime(lib?.openTime || '');
-    setHalfFee(String(lib?.halfTime?.fee || ''));
-    setFullFee(String(lib?.fullTime?.fee || ''));
-    setSelectedFacilities(lib?.facilities || []);
+    if (currentLibrary) {
+      setName(currentLibrary.name || '');
+      setAddress(currentLibrary.address || '');
+      setArea(currentLibrary.area || '');
+      setTotalSeats(String(currentLibrary.total_seats || ''));
+      setWhatsapp(currentLibrary.whatsapp || '');
+      setOpenTime(currentLibrary.openTime || '');
+      setHalfFee(String(currentLibrary.halfTime?.fee || ''));
+      setFullFee(String(currentLibrary.fullTime?.fee || ''));
+      setSelectedFacilities(currentLibrary.facilities || []);
+    }
     setEditing(false);
   };
+
+  if (!currentLibrary) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#F9FAFB' }}>
+        <Ionicons name="business-outline" size={60} color={colors.textLight} />
+        <Text style={{ color: colors.textLight, marginTop: 16, fontSize: 16 }}>No Library Registered</Text>
+        <Text style={{ color: colors.textSecondary, marginTop: 8 }}>Go to Dashboard → Register Now</Text>
+      </View>
+    );
+  }
 
   return (
     <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
       <ScrollView style={s.container} showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
-        <View style={s.header}><Text style={s.heading}>My Library</Text></View>
-
-        {/* Photo */}
-        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.photoScroll}>
-          {lib?.photos?.map((uri, i) => <Image key={i} source={{ uri }} style={s.photo} />)}
-          <TouchableOpacity style={s.addPhoto}><Ionicons name="add" size={32} color={colors.primary} /><Text style={s.addText}>Add Photo</Text></TouchableOpacity>
-        </ScrollView>
+        <View style={s.header}>
+          <Text style={s.heading}>My Library</Text>
+          <Text style={s.subHeading}>{currentLibrary.name}</Text>
+        </View>
 
         {/* Form */}
         <View style={s.formCard}>
@@ -77,7 +121,7 @@ export default function OwnerLibrary() {
           <Field label="Area / City" value={area} onChangeText={setArea} editing={editing} />
           <Field label="Total Seats" value={totalSeats} onChangeText={setTotalSeats} editing={editing} keyboardType="number-pad" />
           <Field label="WhatsApp Number" value={whatsapp} onChangeText={setWhatsapp} editing={editing} keyboardType="phone-pad" />
-          <Field label="Open Time" value={openTime} onChangeText={setOpenTime} editing={editing} placeholder="e.g. 24 Hours or 6AM - 10PM" />
+          <Field label="Open Time" value={openTime} onChangeText={setOpenTime} editing={editing} placeholder="e.g. 6AM - 10PM" />
           <Field label="Half Time Fee (₹/month)" value={halfFee} onChangeText={setHalfFee} editing={editing} keyboardType="number-pad" />
           <Field label="Full Time Fee (₹/month)" value={fullFee} onChangeText={setFullFee} editing={editing} keyboardType="number-pad" />
         </View>
@@ -105,27 +149,26 @@ export default function OwnerLibrary() {
 
         {/* Buttons */}
         {!editing ? (
-          <TouchableOpacity testID="edit-library-btn" style={s.editBtn} onPress={() => setEditing(true)}>
+          <TouchableOpacity style={s.editBtn} onPress={() => setEditing(true)}>
             <Ionicons name="create-outline" size={20} color={colors.white} style={{ marginRight: 6 }} />
             <Text style={s.editBtnText}>Edit Library</Text>
           </TouchableOpacity>
         ) : (
           <View style={s.editActions}>
-            <TouchableOpacity testID="save-library-btn" style={s.saveBtn} onPress={handleSave}>
-              <Text style={s.saveBtnText}>Save Changes</Text>
+            <TouchableOpacity style={s.saveBtn} onPress={handleSave} disabled={saving}>
+              {saving ? <ActivityIndicator color={colors.white} /> : <Text style={s.saveBtnText}>Save Changes</Text>}
             </TouchableOpacity>
-            <TouchableOpacity testID="cancel-edit-btn" style={s.cancelBtn} onPress={handleCancel}>
+            <TouchableOpacity style={s.cancelBtn} onPress={handleCancel}>
               <Text style={s.cancelBtnText}>Cancel</Text>
             </TouchableOpacity>
           </View>
         )}
-        <View style={{ height: 30 }} />
+        <View style={{ height: 40 }} />
       </ScrollView>
     </KeyboardAvoidingView>
   );
 }
 
-// Reusable field: shows text when not editing, input when editing
 const Field = ({ label, value, onChangeText, editing, multiline = false, keyboardType = 'default', placeholder = '' }) => (
   <View style={fs.fieldWrap}>
     <Text style={fs.label}>{label}</Text>
@@ -153,13 +196,10 @@ const fs = StyleSheet.create({
 
 const s = StyleSheet.create({
   container: { flex: 1, backgroundColor: colors.bgLight },
-  header: { paddingHorizontal: 20, paddingTop: 52, paddingBottom: 12, backgroundColor: colors.white },
-  heading: { fontSize: 22, fontWeight: 'bold', color: colors.textPrimary },
-  photoScroll: { paddingHorizontal: 16, paddingVertical: 16 },
-  photo: { width: 200, height: 140, borderRadius: 12, marginRight: 10, backgroundColor: colors.bgLight },
-  addPhoto: { width: 120, height: 140, borderRadius: 12, borderWidth: 2, borderColor: colors.primary, borderStyle: 'dashed', justifyContent: 'center', alignItems: 'center' },
-  addText: { fontSize: 12, color: colors.primary, marginTop: 4, fontWeight: '500' },
-  formCard: { backgroundColor: colors.white, marginHorizontal: 16, borderRadius: 12, padding: 16 },
+  header: { paddingHorizontal: 20, paddingTop: 52, paddingBottom: 16, backgroundColor: colors.primary },
+  heading: { fontSize: 22, fontWeight: 'bold', color: colors.white },
+  subHeading: { fontSize: 14, color: 'rgba(255,255,255,0.8)', marginTop: 4 },
+  formCard: { backgroundColor: colors.white, marginHorizontal: 16, marginTop: 16, borderRadius: 12, padding: 16 },
   section: { paddingHorizontal: 16, marginTop: 16 },
   secTitle: { fontSize: 16, fontWeight: '700', color: colors.textPrimary, marginBottom: 10 },
   facilityGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },

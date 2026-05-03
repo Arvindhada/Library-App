@@ -1,55 +1,116 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Switch } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import colors from '../../../src/constants/colors';
 import { useApp } from '../../../src/context/AppContext';
 
 export default function StudentProfile() {
   const router = useRouter();
-  const { studentData, setUserRole } = useApp();
+  const { studentData, setUserRole, isDarkMode, setIsDarkMode, theme: tColors } = useApp();
+
+  const s = StyleSheet.create({
+    container: { flex: 1, backgroundColor: tColors.bg },
+    header: { paddingHorizontal: 24, paddingTop: 60, paddingBottom: 16, backgroundColor: tColors.bg },
+    heading: { fontSize: 28, fontWeight: '800', color: tColors.textDark },
+    
+    profileCard: { marginHorizontal: 24, marginTop: 8, marginBottom: 24, alignItems: 'center', backgroundColor: tColors.cardBg, paddingVertical: 32, borderRadius: 24, borderWidth: 1, borderColor: tColors.border, shadowColor: '#000', shadowOffset: { width: 0, height: 8 }, shadowOpacity: isDarkMode ? 0.3 : 0.05, shadowRadius: 16, elevation: 5 },
+    avatarContainer: { position: 'relative', marginBottom: 16 },
+    avatar: { width: 90, height: 90, borderRadius: 45, backgroundColor: tColors.border },
+    avatarPlaceholder: { width: 90, height: 90, borderRadius: 45, backgroundColor: tColors.primaryLight, justifyContent: 'center', alignItems: 'center' },
+    editBadge: { position: 'absolute', bottom: 0, right: 0, backgroundColor: tColors.primary, width: 28, height: 28, borderRadius: 14, justifyContent: 'center', alignItems: 'center', borderWidth: 2, borderColor: tColors.cardBg },
+    
+    name: { fontSize: 22, fontWeight: '800', color: tColors.textDark },
+    goal: { fontSize: 14, color: tColors.primary, marginTop: 4, fontWeight: '600' },
+    phone: { fontSize: 13, color: tColors.textGray, marginTop: 4 },
+    
+    sectionTitle: { fontSize: 13, fontWeight: '700', color: tColors.textGray, marginLeft: 24, marginBottom: 8, textTransform: 'uppercase', letterSpacing: 1 },
+    menuCard: { backgroundColor: tColors.cardBg, borderRadius: 20, marginHorizontal: 24, marginBottom: 24, paddingVertical: 8, borderWidth: 1, borderColor: tColors.border },
+    
+    menuItem: { flexDirection: 'row', alignItems: 'center', paddingVertical: 14, paddingHorizontal: 20 },
+    menuIconBox: { width: 36, height: 36, borderRadius: 12, backgroundColor: tColors.primaryLight, justifyContent: 'center', alignItems: 'center', marginRight: 14 },
+    menuText: { flex: 1, fontSize: 15, fontWeight: '600', color: tColors.textDark },
+    divider: { height: 1, backgroundColor: tColors.border, marginLeft: 70 },
+    
+    logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginHorizontal: 24, paddingVertical: 16, borderRadius: 16, backgroundColor: tColors.dangerLight, borderWidth: 1, borderColor: tColors.danger + '40' },
+    logoutText: { fontSize: 16, fontWeight: '700', color: tColors.danger, marginLeft: 8 },
+  });
 
   return (
-    <ScrollView style={s.container}>
-      <View style={s.header}><Text style={s.heading}>Profile</Text></View>
+    <ScrollView style={s.container} showsVerticalScrollIndicator={false}>
+      <View style={s.header}>
+        <Text style={s.heading}>Profile</Text>
+      </View>
 
       <View style={s.profileCard}>
-        {studentData.photo ? (
-          <Image source={{ uri: studentData.photo }} style={s.avatar} />
-        ) : (
-          <View style={s.avatarPlaceholder}><Ionicons name="person" size={36} color={colors.textLight} /></View>
-        )}
+        <View style={s.avatarContainer}>
+          {studentData.photo ? (
+            <Image source={{ uri: studentData.photo }} style={s.avatar} />
+          ) : (
+            <View style={s.avatarPlaceholder}>
+              <Ionicons name="person" size={40} color={tColors.primary} />
+            </View>
+          )}
+          <TouchableOpacity style={s.editBadge} activeOpacity={0.8}>
+            <Ionicons name="camera" size={14} color="#FFF" />
+          </TouchableOpacity>
+        </View>
         <Text style={s.name}>{studentData.name || 'Student'}</Text>
         {studentData.studyGoal ? <Text style={s.goal}>{studentData.studyGoal}</Text> : null}
         {studentData.phone ? <Text style={s.phone}>+91 {studentData.phone}</Text> : null}
       </View>
 
-      <TouchableOpacity style={s.menuItem}><Ionicons name="create-outline" size={22} color={colors.textPrimary} /><Text style={s.menuText}>Edit Profile</Text><Ionicons name="chevron-forward" size={18} color={colors.textLight} /></TouchableOpacity>
-      <TouchableOpacity style={s.menuItem} onPress={() => router.push('/student/tabs/saved')}><Ionicons name="bookmark-outline" size={22} color={colors.textPrimary} /><Text style={s.menuText}>Saved Libraries</Text><Ionicons name="chevron-forward" size={18} color={colors.textLight} /></TouchableOpacity>
-      <TouchableOpacity style={s.menuItem}><Ionicons name="notifications-outline" size={22} color={colors.textPrimary} /><Text style={s.menuText}>Notifications</Text><Ionicons name="chevron-forward" size={18} color={colors.textLight} /></TouchableOpacity>
-      <TouchableOpacity style={s.menuItem}><Ionicons name="help-circle-outline" size={22} color={colors.textPrimary} /><Text style={s.menuText}>Help & Support</Text><Ionicons name="chevron-forward" size={18} color={colors.textLight} /></TouchableOpacity>
+      <Text style={s.sectionTitle}>General</Text>
+      <View style={s.menuCard}>
+        <TouchableOpacity style={s.menuItem} activeOpacity={0.7}>
+          <View style={s.menuIconBox}><Ionicons name="person-outline" size={18} color={tColors.primary} /></View>
+          <Text style={s.menuText}>Edit Profile</Text>
+          <Ionicons name="chevron-forward" size={18} color={tColors.textGray} />
+        </TouchableOpacity>
+        <View style={s.divider} />
+        
+        <TouchableOpacity style={s.menuItem} onPress={() => router.push('/student/tabs/saved')} activeOpacity={0.7}>
+          <View style={s.menuIconBox}><Ionicons name="bookmark-outline" size={18} color={tColors.primary} /></View>
+          <Text style={s.menuText}>Saved Spaces</Text>
+          <Ionicons name="chevron-forward" size={18} color={tColors.textGray} />
+        </TouchableOpacity>
+        <View style={s.divider} />
+        
+        <TouchableOpacity style={s.menuItem} activeOpacity={0.7}>
+          <View style={s.menuIconBox}><Ionicons name="notifications-outline" size={18} color={tColors.primary} /></View>
+          <Text style={s.menuText}>Notifications</Text>
+          <Ionicons name="chevron-forward" size={18} color={tColors.textGray} />
+        </TouchableOpacity>
+      </View>
 
-      <TouchableOpacity testID="logout-btn" style={s.logoutBtn} onPress={() => { setUserRole(null); router.replace('/'); }}>
-        <Ionicons name="log-out-outline" size={22} color={colors.danger} />
+      <Text style={s.sectionTitle}>Preferences</Text>
+      <View style={s.menuCard}>
+        <View style={s.menuItem}>
+          <View style={[s.menuIconBox, { backgroundColor: isDarkMode ? '#333' : '#F3F4F6' }]}>
+            <Ionicons name={isDarkMode ? "moon" : "sunny"} size={18} color={isDarkMode ? "#FFF" : "#F5A623"} />
+          </View>
+          <Text style={s.menuText}>Dark Mode</Text>
+          <Switch 
+            value={isDarkMode} 
+            onValueChange={setIsDarkMode} 
+            trackColor={{ false: tColors.border, true: tColors.primary }}
+            thumbColor={'#FFF'}
+          />
+        </View>
+        <View style={s.divider} />
+        
+        <TouchableOpacity style={s.menuItem} activeOpacity={0.7}>
+          <View style={s.menuIconBox}><Ionicons name="help-buoy-outline" size={18} color={tColors.primary} /></View>
+          <Text style={s.menuText}>Help & Support</Text>
+          <Ionicons name="chevron-forward" size={18} color={tColors.textGray} />
+        </TouchableOpacity>
+      </View>
+
+      <TouchableOpacity testID="logout-btn" style={s.logoutBtn} onPress={() => { setUserRole(null); router.replace('/'); }} activeOpacity={0.8}>
+        <Ionicons name="log-out-outline" size={20} color={tColors.danger} />
         <Text style={s.logoutText}>Logout</Text>
       </TouchableOpacity>
-      <View style={{ height: 30 }} />
+      
+      <View style={{ height: 40 }} />
     </ScrollView>
   );
 }
-
-const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bgLight },
-  header: { paddingHorizontal: 20, paddingTop: 52, paddingBottom: 12, backgroundColor: colors.white },
-  heading: { fontSize: 22, fontWeight: 'bold', color: colors.textPrimary },
-  profileCard: { alignItems: 'center', backgroundColor: colors.white, paddingVertical: 24, marginBottom: 16 },
-  avatar: { width: 80, height: 80, borderRadius: 40, marginBottom: 12 },
-  avatarPlaceholder: { width: 80, height: 80, borderRadius: 40, backgroundColor: colors.bgLight, justifyContent: 'center', alignItems: 'center', marginBottom: 12, borderWidth: 2, borderColor: colors.cardBorder },
-  name: { fontSize: 20, fontWeight: '700', color: colors.textPrimary },
-  goal: { fontSize: 14, color: colors.primary, marginTop: 4, fontWeight: '500' },
-  phone: { fontSize: 13, color: colors.textSecondary, marginTop: 4 },
-  menuItem: { flexDirection: 'row', alignItems: 'center', backgroundColor: colors.white, paddingVertical: 16, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: colors.bgLight },
-  menuText: { flex: 1, fontSize: 15, color: colors.textPrimary, marginLeft: 14 },
-  logoutBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', marginHorizontal: 16, marginTop: 24, paddingVertical: 14, borderRadius: 10, borderWidth: 1, borderColor: colors.danger },
-  logoutText: { fontSize: 16, fontWeight: '600', color: colors.danger, marginLeft: 8 },
-});

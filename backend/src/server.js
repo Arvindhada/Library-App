@@ -19,6 +19,7 @@ app.use(apiLimiter);
 app.use('/api/auth', require('./routes/auth'));
 app.use('/api/libraries', require('./routes/library'));
 app.use('/api/bookings', require('./routes/booking'));
+app.use('/api/payments', require('./routes/payment'));
 app.use('/api/users', require('./routes/user'));
 
 app.get('/api/health', (req, res) => {

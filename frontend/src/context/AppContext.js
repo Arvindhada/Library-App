@@ -18,6 +18,20 @@ export const AppProvider = ({ children }) => {
     studyGoal: '',
     photo: null,
   });
+
+  const [isDarkMode, setIsDarkMode] = useState(false);
+  const theme = {
+    primary: '#1D7151',
+    primaryLight: isDarkMode ? '#1A2F25' : '#E8F5E9',
+    textDark: isDarkMode ? '#FFFFFF' : '#1A1D1E',
+    textGray: isDarkMode ? '#A1A5A7' : '#707375',
+    bg: isDarkMode ? '#121212' : '#FDFDFD',
+    cardBg: isDarkMode ? '#1E1E1E' : '#FFFFFF',
+    border: isDarkMode ? '#333333' : '#EAEAEA',
+    danger: '#DC2626',
+    dangerLight: isDarkMode ? '#451A1A' : '#FEE2E2',
+  };
+
   const [libraries, setLibraries] = useState(dummyLibraries);
   const [savedLibraryIds, setSavedLibraryIds] = useState([]);
   const [seatStates, setSeatStates] = useState({}); // { libraryId: [true, false, ...] }
@@ -37,6 +51,41 @@ export const AppProvider = ({ children }) => {
     { id: '1', type: 'join', text: 'Aman Sharma joined the library', time: '2h ago' },
     { id: '2', type: 'payment', text: 'Priya Verma paid ₹400', time: '5h ago' },
   ]);
+
+  const [currentLibrary, setCurrentLibrary] = useState(null);
+  const [currentBookings, setCurrentBookings] = useState([]);
+  const [loading, setLoading] = useState(false);
+
+  // Fetch Dashboard Data from Backend
+  const fetchDashboardData = async () => {
+    setLoading(true);
+    try {
+      // TEMPORARY: Bypassing actual backend call for UI testing on physical phone
+      setTimeout(() => {
+        setCurrentLibrary({
+          _id: 'dummy-lib-1',
+          name: 'Premium Study Library',
+          totalSeats: 100,
+          halfTime: { fee: 600 },
+          fullTime: { fee: 1000 }
+        });
+        
+        // Mock current bookings
+        setCurrentBookings([
+          { _id: 'b1', seat: '12', shift: 'Full Time', status: 'Active', endDate: '2026-06-10T00:00:00Z', student: { name: 'Aman Sharma', phone: '9876543210' } },
+          { _id: 'b2', seat: '05', shift: 'Half Time', status: 'Active', endDate: '2024-01-01T00:00:00Z', student: { name: 'Priya Verma', phone: '9123456789' } },
+          { _id: 'b3', seat: '18', shift: 'Full Time', status: 'Active', endDate: new Date(new Date().setDate(new Date().getDate() + 1)).toISOString(), student: { name: 'Rahul Joshi', phone: '9988776655' } },
+        ]);
+        setLoading(false);
+      }, 500);
+      
+    } catch (error) {
+      console.error('AppContext Fetch Error:', error);
+      const { Alert } = require('react-native');
+      Alert.alert('Dashboard Error', 'Could not connect to backend.');
+      setLoading(false);
+    }
+  };
 
   // Toggle saved library
   const toggleSaveLibrary = (id) => {
@@ -109,6 +158,9 @@ export const AppProvider = ({ children }) => {
         updateLibrarySeats,
         getOwnerLibrary,
         updateOwnerLibrary,
+        currentLibrary, currentBookings,
+        fetchDashboardData, loading,
+        isDarkMode, setIsDarkMode, theme,
       }}
     >
       {children}

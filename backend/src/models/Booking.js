@@ -24,7 +24,7 @@ const bookingSchema = new mongoose.Schema({
   },
   shift: {
     type: String,
-    enum: ['Morning', 'Evening', 'Full Day'],
+    enum: ['Half Time', 'Full Time', 'Morning', 'Evening', 'Full Day'],
     required: true,
   },
   status: {

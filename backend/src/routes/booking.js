@@ -76,4 +76,53 @@ router.put('/:id/status', protect, async (req, res, next) => {
   } catch (error) { next(error); }
 });
 
+// @route   POST /api/bookings/owner/add-student
+// @desc    Owner manually adds a student to their library
+// @access  Private
+router.post('/owner/add-student', protect, async (req, res, next) => {
+  try {
+    const { name, phone, seat, shift, startDate, endDate, libraryId } = req.body;
+    const User = require('../models/User');
+
+    // 1. Find or Create Student User
+    let student = await User.findOne({ phone: phone.includes('+91') ? phone : `+91${phone}` });
+    if (!student) {
+      student = await User.create({
+        name,
+        phone: phone.includes('+91') ? phone : `+91${phone}`,
+        role: 'student'
+      });
+    }
+
+    // 2. Check if seat is already taken in this library
+    const existing = await Booking.findOne({ library: libraryId, seat, status: 'Active' });
+    if (existing) {
+      res.status(400);
+      throw new Error(`Seat ${seat} is already occupied.`);
+    }
+
+    // 3. Create Active Booking
+    const booking = await Booking.create({
+      student: student._id,
+      library: libraryId,
+      seat,
+      shift,
+      startDate: startDate || new Date(),
+      endDate: endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days default
+      status: 'Active'
+    });
+
+    // 4. Update library available seats
+    const library = await Library.findById(libraryId);
+    if (library) {
+      library.available_seats = Math.max(0, (library.available_seats || 0) - 1);
+      await library.save();
+    }
+
+    res.status(201).json({ success: true, booking, message: 'Student added successfully' });
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = router;
