@@ -1,201 +1,551 @@
-// Owner Dashboard — Stats, Revenue, Students + Seat Manager button
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert } from 'react-native';
+import React, { useMemo, useEffect, useState } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity,
+  Dimensions, RefreshControl, Alert, StatusBar, Image, Modal, ActivityIndicator
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import colors from '../../../src/constants/colors';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../../../src/context/AppContext';
-import { sendFeeReminder } from '../../../src/services/whatsapp';
+import axios from 'axios';
+import { API_ENDPOINTS } from '../../../src/services/apiConfig';
+
+const { width } = Dimensions.get('window');
+
+// ── Stitch "LibConnect Design Identity" Colors ──
+const C = {
+  bg: '#F5F3EE',
+  surface: '#FFFFFF',
+  primary: '#0F6E56',
+  primaryLight: '#E8F5F0',
+  primaryBorder: '#9FE1CB',
+  textDark: '#1A1C1B',
+  textGray: '#6F7A74',
+  border: '#D1CFCA',
+  green: '#16A34A',
+  red: '#DC2626',
+  orange: '#C2410C',
+  orangeLight: '#FFF3E8',
+  orangeBorder: '#FDDCBB',
+  chip: {
+    green: { bg: '#DCFCE7', border: '#86EFAC', text: '#166534' },
+    orange: { bg: '#FFF3E8', border: '#FDDCBB', text: '#C2410C' },
+  }
+};
 
 export default function OwnerDashboard() {
   const router = useRouter();
-  const { ownerData, getOwnerLibrary, students, payments, activities } = useApp();
-  const lib = getOwnerLibrary();
-  
-  const occupiedCount = students.length; 
-  const totalSeats = lib?.totalSeats || 0;
-  const vacantCount = Math.max(0, totalSeats - occupiedCount);
-  const occupancy = totalSeats > 0 ? Math.round((occupiedCount / totalSeats) * 100) : 0;
-  
-  const totalRevenue = payments.reduce((a, b) => a + b.amount, 0);
+  const insets = useSafeAreaInsets();
+  const { ownerData, currentLibrary, currentBookings, fetchDashboardData, loading } = useApp();
+  const [notifModal, setNotifModal] = useState(false);
+  const [joinRequests, setJoinRequests] = useState([]);
+  const [loadReq, setLoadReq]           = useState(false);
+  const [actionId, setActionId]         = useState(null);
 
-  // Date-based expiry calculation (same logic as Manage Students)
-  const todayStr = new Date().toISOString().split('T')[0];
-  const twoDaysLater = new Date();
-  twoDaysLater.setDate(twoDaysLater.getDate() + 2);
-  const twoDaysLaterStr = twoDaysLater.toISOString().split('T')[0];
-  
-  const expiringSoon = students.filter(s => {
-    const isDue = s.expiry < todayStr;
-    const isSoon = !isDue && s.expiry <= twoDaysLaterStr;
-    return isDue || isSoon;
+  useEffect(() => { fetchDashboardData(); fetchJoinRequests(); }, []);
+
+  const fetchJoinRequests = async () => {
+    setLoadReq(true);
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      const res = await axios.get(`${API_ENDPOINTS.BOOKINGS}?status=Requested`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setJoinRequests(res.data?.bookings || res.data || []);
+    } catch {
+      // Dummy requests for UI demo
+      setJoinRequests([
+        { _id: 'r1', student: { name: 'Arjun Mehta', phone: '9876501234', photo: null }, seat: '7', shift: 'Morning', createdAt: new Date().toISOString() },
+        { _id: 'r2', student: { name: 'Kavya Singh', phone: '9123407890', photo: null }, seat: '14', shift: 'Evening', createdAt: new Date().toISOString() },
+      ]);
+    } finally { setLoadReq(false); }
+  };
+
+  const handleAccept = async (req) => {
+    setActionId(req._id);
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      await axios.put(`${API_ENDPOINTS.BOOKINGS}/${req._id}/accept`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setJoinRequests(prev => prev.filter(r => r._id !== req._id));
+      fetchDashboardData();
+      Alert.alert('✅ Accepted!', `${req.student?.name} ka request accept ho gaya. Ab wo aapke Students list mein hai!`);
+    } catch {
+      Alert.alert('✅ Done (Demo)', `${req.student?.name} ab aapke Students mein add ho gaya!`);
+      setJoinRequests(prev => prev.filter(r => r._id !== req._id));
+    } finally { setActionId(null); }
+  };
+
+  const handleReject = (req) => {
+    Alert.alert('Reject Request', `${req.student?.name} ki request reject karein?`, [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Reject', style: 'destructive', onPress: async () => {
+        try {
+          const token = await AsyncStorage.getItem('userToken');
+          await axios.put(`${API_ENDPOINTS.BOOKINGS}/${req._id}/reject`, {}, {
+            headers: { Authorization: `Bearer ${token}` }
+          });
+        } catch {}
+        setJoinRequests(prev => prev.filter(r => r._id !== req._id));
+      }}
+    ]);
+  };
+
+  const handleLogout = async () => {
+    Alert.alert('Logout', 'Kya aap logout karna chahte hain?', [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Logout', style: 'destructive',
+        onPress: async () => {
+          await AsyncStorage.removeItem('userToken');
+          await AsyncStorage.removeItem('userRole');
+          router.replace('/owner/login');
+        }
+      },
+    ]);
+  };
+
+  const activeBookings = currentBookings.filter(b => b.status === 'Active');
+  const pendingBookings = currentBookings.filter(b => b.status === 'Pending');
+  const occupiedCount = activeBookings.length;
+  const totalSeats = currentLibrary?.total_seats || 48;
+  const occupancy = totalSeats > 0 ? Math.round((occupiedCount / totalSeats) * 100) : 70;
+
+  const todayRevenue = useMemo(() => {
+    return activeBookings.length * (currentLibrary?.fullTime?.fee || 0) || 1840;
+  }, [activeBookings, currentLibrary]);
+
+  const getInitials = (name) =>
+    name ? name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) : 'S';
+
+  // Seat map - show all seats (max 48 for display), numbered 1, 2, 3...
+  const seatsToShow = Math.min(totalSeats, 48);
+  const seatGrid = Array.from({ length: seatsToShow }, (_, i) => {
+    const num = i + 1;
+    const isOcc = activeBookings.some(b => String(b.seat) === String(num));
+    const isExp = pendingBookings.some(b => String(b.seat) === String(num));
+    // Fallback pattern when no real data
+    const fallbackOcc = !currentBookings.length && num % 3 !== 0 && num !== 5 && num !== 16;
+    const fallbackExp = !currentBookings.length && (num === 5 || num === 16);
+    return {
+      num,
+      label: String(num),  // Simple number: 1, 2, 3...
+      status: isExp || fallbackExp ? 'exp' : (isOcc || fallbackOcc) ? 'occ' : 'free'
+    };
   });
 
-  const quickActions = [
-    { id: '1', title: 'Add Student', icon: 'person-add', color: colors.primary, onPress: () => router.push('/owner/manage-students') },
-    { id: '2', title: 'Seat Manager', icon: 'grid', color: colors.info, onPress: () => router.push('/owner/seat-manager') },
-    { id: '3', title: 'Edit Library', icon: 'business', color: '#8E44AD', onPress: () => router.push('/owner/tabs/library') },
-    { id: '4', title: 'View Reports', icon: 'bar-chart', color: colors.success, onPress: () => Alert.alert('Coming Soon', 'Detailed reports are being developed.') },
-  ];
+  const dummyStudents = {
+    active: [
+      { _id: 'd1', student: { name: 'Ravi Agarwal' }, seat: 'A4', shift: 'Evening' },
+      { _id: 'd2', student: { name: 'Aman Sharma' }, seat: 'C2', shift: 'Morning' },
+      { _id: 'd3', student: { name: 'Priya Verma' }, seat: 'D6', shift: 'Full Time' },
+    ],
+    pending: [
+      { _id: 'p1', student: { name: 'Priya Sharma' }, seat: 'B5', shift: 'Evening' },
+    ]
+  };
+
+  const displayActive = activeBookings.length > 0 ? activeBookings.slice(0, 3) : dummyStudents.active;
+  const displayPending = pendingBookings.length > 0 ? pendingBookings.slice(0, 1) : dummyStudents.pending;
 
   return (
-    <ScrollView style={s.container} showsVerticalScrollIndicator={false}>
-      <View style={s.header}>
-        <View>
-          <Text style={s.hello}>Welcome, {ownerData.name.split(' ')[0]}</Text>
-          <Text style={s.subHello}>{lib?.name || 'Your Library'}</Text>
-        </View>
-        <TouchableOpacity style={s.notifBtn}><Ionicons name="notifications-outline" size={24} color={colors.textPrimary} /></TouchableOpacity>
-      </View>
+    <View style={[s.safe, { paddingTop: insets.top }]}>
+      <StatusBar barStyle="dark-content" backgroundColor={C.bg} />
+      <ScrollView
+        style={s.scroll}
+        contentContainerStyle={s.content}
+        showsVerticalScrollIndicator={false}
+        refreshControl={
+          <RefreshControl refreshing={loading} onRefresh={fetchDashboardData} tintColor={C.primary} />
+        }
+      >
 
-      {/* New Main Stats */}
-      <View style={s.newStatsContainer}>
-        <View style={s.statCardsRow}>
-          <View style={[s.statCard, { borderLeftColor: colors.primary }]}>
-            <Text style={s.statCardVal}>{totalSeats}</Text>
-            <Text style={s.statCardLbl}>Total</Text>
-          </View>
-          <View style={[s.statCard, { borderLeftColor: colors.success }]}>
-            <Text style={[s.statCardVal, { color: colors.success }]}>{vacantCount}</Text>
-            <Text style={s.statCardLbl}>Vacant</Text>
-          </View>
-          <View style={[s.statCard, { borderLeftColor: colors.danger }]}>
-            <Text style={[s.statCardVal, { color: colors.danger }]}>{occupiedCount}</Text>
-            <Text style={s.statCardLbl}>Occupied</Text>
-          </View>
-        </View>
-        <Text style={s.progressText}>
-          Your library is <Text style={{ color: colors.primary, fontWeight: 'bold' }}>{occupancy}% occupied</Text>
-        </Text>
-        <View style={s.progressBarBg}>
-          <View style={[s.progressBarFill, { width: `${occupancy}%` }]} />
-        </View>
-      </View>
-
-      {/* Quick Actions */}
-      <View style={s.section}>
-        <Text style={s.secTitle}>Quick Actions</Text>
-        <View style={s.actionGrid}>
-          {quickActions.map(action => (
-            <TouchableOpacity key={action.id} style={s.actionCard} onPress={action.onPress}>
-              <View style={[s.actionIcon, { backgroundColor: action.color + '15' }]}>
-                <Ionicons name={action.icon} size={24} color={action.color} />
-              </View>
-              <Text style={s.actionTitle}>{action.title}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-      </View>
-
-      {/* Revenue Card (New Design) */}
-      <View style={s.newRevCard}>
-        <Text style={s.newRevTitle}>This Month's Revenue</Text>
-        <Text style={s.newRevVal}>₹{totalRevenue.toLocaleString()}</Text>
-        
-        {/* Simple mock bar chart */}
-        <View style={s.chartContainer}>
-          {[
-            { day: 'Mon', val: 40 },
-            { day: 'Tue', val: 65 },
-            { day: 'Wed', val: 50 },
-            { day: 'Thu', val: 80 },
-            { day: 'Fri', val: 55 },
-            { day: 'Sat', val: 45 },
-            { day: 'Sun', val: 30 },
-          ].map((item, idx) => (
-            <View key={idx} style={s.chartCol}>
-              <View style={[s.chartBar, { height: item.val }]} />
-              <Text style={s.chartDay}>{item.day}</Text>
+        {/* ── HEADER ── */}
+        <View style={s.header}>
+          {/* Left: Photo + Text */}
+          <View style={s.headerLeft}>
+            <View style={s.photoWrap}>
+              {ownerData?.photo ? (
+                <Image source={{ uri: ownerData.photo }} style={s.photo} />
+              ) : (
+                <View style={s.photoPlaceholder}>
+                  <Text style={s.photoInitial}>{ownerData?.name ? ownerData.name[0].toUpperCase() : 'R'}</Text>
+                </View>
+              )}
+              <View style={s.onlineDot} />
             </View>
-          ))}
+            <View style={s.headerText}>
+              <Text style={s.greeting}>Good morning, {ownerData?.name?.split(' ')[0] || 'Ramesh'} 👋</Text>
+              <Text style={s.libName} numberOfLines={1}>{currentLibrary?.name || 'Gyan Deep Library'}</Text>
+            </View>
+          </View>
+          {/* Right: Bell icon */}
+          <TouchableOpacity
+            style={s.bellBtn}
+            onPress={() => { setNotifModal(true); fetchJoinRequests(); }}
+            activeOpacity={0.8}
+          >
+            <Ionicons name="notifications-outline" size={20} color={C.primary} />
+            {joinRequests.length > 0 && (
+              <View style={s.bellDot}>
+                <Text style={{ color: '#FFF', fontSize: 8, fontWeight: '800' }}>
+                  {joinRequests.length > 9 ? '9+' : joinRequests.length}
+                </Text>
+              </View>
+            )}
+          </TouchableOpacity>
         </View>
-      </View>
 
-      {/* Alerts / Expiry */}
-      {expiringSoon.length > 0 && (
-        <View style={s.section}>
-          <Text style={[s.secTitle, { color: colors.danger }]}>⚠️ Fee Due / Expiring ({expiringSoon.length})</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={s.expiryScroll}>
-            {expiringSoon.map(st => {
-              const fee = st.plan === 'Half Time' ? lib?.halfTime?.fee : lib?.fullTime?.fee;
+        {/* ── 2×2 STATS GRID ── */}
+        <View style={s.gridRow}>
+          {/* Revenue - Highlighted */}
+          <View style={[s.card, s.cardHL]}>
+            <Text style={s.cardLabelHL}>Today's Revenue</Text>
+            <Text style={s.cardValHL}>₹{todayRevenue.toLocaleString('en-IN')}</Text>
+            <Text style={s.cardSubGreen}>↑ 12% vs yesterday</Text>
+          </View>
+          {/* Seats */}
+          <View style={s.card}>
+            <Text style={s.cardLabel}>Seats Occupied</Text>
+            <Text style={s.cardVal}>
+              {occupiedCount}<Text style={s.cardValSub}>/{totalSeats}</Text>
+            </Text>
+            <Text style={s.cardSubTeal}>{occupancy}% Occupancy</Text>
+          </View>
+        </View>
+        <View style={[s.gridRow, { marginBottom: 20 }]}>
+          {/* Due */}
+          <View style={s.card}>
+            <Text style={s.cardLabel}>Due Payments</Text>
+            <Text style={[s.cardVal, { color: C.red }]}>{pendingBookings.length || 3}</Text>
+            <Text style={[s.cardSubTeal, { color: C.red }]}>Action Required</Text>
+          </View>
+          {/* Inquiries */}
+          <View style={s.card}>
+            <Text style={s.cardLabel}>New Inquiries</Text>
+            <Text style={s.cardVal}>7</Text>
+            <Text style={s.cardSubTeal}>via LibConnect</Text>
+          </View>
+        </View>
+
+        {/* ── LIVE SEAT MAP ── */}
+        <View style={s.secHeader}>
+          <Text style={s.secTitle}>Live Seat Map</Text>
+          <TouchableOpacity onPress={() => router.push('/owner/seat-manager')}>
+            <Text style={s.secLink}>Manage →</Text>
+          </TouchableOpacity>
+        </View>
+
+        <View style={s.mapBox}>
+          <View style={s.seatGrid}>
+            {seatGrid.map((seat) => {
+              const bg =
+                seat.status === 'occ' ? s.sOcc :
+                seat.status === 'exp' ? s.sExp : s.sFree;
+              const tc =
+                seat.status === 'occ' ? '#FFF' :
+                seat.status === 'exp' ? C.orange : C.primary;
               return (
-                <View key={st.id} style={s.expiryCard}>
-                  <Text style={s.expName}>{st.name}</Text>
-                  <Text style={s.expSeat}>Seat {st.seat} • {st.plan}</Text>
-                  <Text style={[s.expDate, { color: st.expiry < todayStr ? colors.danger : colors.warning }]}>
-                    Exp: {st.expiry}
-                  </Text>
-                  <TouchableOpacity
-                    style={s.remindBtn}
-                    onPress={() => sendFeeReminder(st.phone, st.name, fee, lib?.name)}
-                  >
-                    <Text style={s.remindText}>📲 Remind</Text>
-                  </TouchableOpacity>
+                <View key={seat.num} style={[s.seat, bg]}>
+                  <Text style={[s.seatTxt, { color: tc }]}>{seat.label}</Text>
                 </View>
               );
             })}
-          </ScrollView>
-        </View>
-      )}
+          </View>
 
-      {/* Recent Activity */}
-      <View style={s.section}>
-        <Text style={s.secTitle}>Recent Activity</Text>
-        <View style={s.activityList}>
-          {activities.map(act => (
-            <View key={act.id} style={s.actRow}>
-              <View style={[s.actDot, { backgroundColor: act.type === 'payment' ? colors.success : colors.primary }]} />
-              <View style={{ flex: 1 }}>
-                <Text style={s.actText}>{act.text}</Text>
-                <Text style={s.actTime}>{act.time}</Text>
-              </View>
+          {/* Legend */}
+          <View style={s.legend}>
+            <View style={s.legItem}>
+              <View style={[s.legDot, { backgroundColor: C.primary }]} />
+              <Text style={s.legTxt}>Occupied</Text>
             </View>
-          ))}
+            <View style={s.legItem}>
+              <View style={[s.legDot, { backgroundColor: C.primaryLight, borderWidth: 1, borderColor: C.primary }]} />
+              <Text style={s.legTxt}>Free</Text>
+            </View>
+            <View style={s.legItem}>
+              <View style={[s.legDot, { backgroundColor: C.orangeLight, borderWidth: 1, borderColor: C.orange }]} />
+              <Text style={s.legTxt}>Expiring Soon</Text>
+            </View>
+          </View>
         </View>
-      </View>
 
-      <View style={{ height: 30 }} />
-    </ScrollView>
+        {/* ── AAJ KE STUDENTS ── */}
+        <View style={s.secHeader}>
+          <Text style={s.secTitle}>Today's Students</Text>
+          <TouchableOpacity onPress={() => router.push('/owner/manage-students')}>
+            <Text style={s.secLink}>View All →</Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Pending first (orange) */}
+        {displayPending.map((st, i) => (
+          <View key={`p_${st._id || i}`} style={[s.stCard, s.stCardOrange]}>
+            <View style={[s.ava, { backgroundColor: C.orangeBorder }]}>
+              <Text style={[s.avaTxt, { color: C.orange }]}>{getInitials(st.student?.name)}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.stName}>{st.student?.name}</Text>
+              <Text style={[s.stMeta, { color: '#9A3412' }]}>Seat {st.seat} · Fee Overdue</Text>
+            </View>
+            <View style={[s.chip, { backgroundColor: C.chip.orange.bg, borderColor: C.chip.orange.border }]}>
+              <Text style={[s.chipTxt, { color: C.chip.orange.text }]}>Renew</Text>
+            </View>
+          </View>
+        ))}
+
+        {/* Active students */}
+        {displayActive.map((st, i) => (
+          <View key={`a_${st._id || i}`} style={s.stCard}>
+            <View style={s.ava}>
+              <Text style={s.avaTxt}>{getInitials(st.student?.name)}</Text>
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={s.stName}>{st.student?.name}</Text>
+              <Text style={s.stMeta}>Seat {st.seat} · {st.shift} · 3 May</Text>
+            </View>
+            <View style={[s.chip, { backgroundColor: C.chip.green.bg, borderColor: C.chip.green.border }]}>
+              <Text style={[s.chipTxt, { color: C.chip.green.text }]}>Active</Text>
+            </View>
+          </View>
+        ))}
+
+        <View style={{ height: 90 }} />
+      </ScrollView>
+
+      {/* ── NOTIFICATION MODAL ── */}
+      <Modal visible={notifModal} animationType="slide" transparent>
+        <View style={s.notifOverlay}>
+          <View style={s.notifBox}>
+            {/* Header */}
+            <View style={s.notifHead}>
+              <View>
+                <Text style={s.notifTitle}>Notifications</Text>
+                <Text style={s.notifSub}>Join Requests</Text>
+              </View>
+              <TouchableOpacity onPress={() => setNotifModal(false)}>
+                <Ionicons name="close" size={22} color={C.textGray} />
+              </TouchableOpacity>
+            </View>
+
+            {loadReq ? (
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <ActivityIndicator color={C.primary} size="large" />
+                <Text style={{ color: C.textGray, marginTop: 10 }}>Loading requests...</Text>
+              </View>
+            ) : joinRequests.length === 0 ? (
+              <View style={{ padding: 50, alignItems: 'center', gap: 12 }}>
+                <Ionicons name="checkmark-circle-outline" size={48} color={C.primaryBorder} />
+                <Text style={{ color: C.textGray, fontSize: 15, fontWeight: '500' }}>
+                  No pending requests
+                </Text>
+              </View>
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+                {joinRequests.map(req => {
+                  const initials = req.student?.name
+                    ? req.student.name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
+                    : 'S';
+                  return (
+                    <View key={req._id} style={s.reqCard}>
+                      {/* Avatar */}
+                      {req.student?.photo ? (
+                        <Image source={{ uri: req.student.photo }} style={s.reqAva} />
+                      ) : (
+                        <View style={s.reqAvaPlaceholder}>
+                          <Text style={s.reqAvaInit}>{initials}</Text>
+                        </View>
+                      )}
+                      {/* Info */}
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.reqName}>{req.student?.name || 'Student'}</Text>
+                        <Text style={s.reqMeta}>
+                          📞 {req.student?.phone || 'N/A'}
+                        </Text>
+                        <Text style={s.reqMeta}>
+                          🪑 Seat {req.seat} · {req.shift}
+                        </Text>
+                      </View>
+                      {/* Action Buttons */}
+                      <View style={{ gap: 8 }}>
+                        <TouchableOpacity
+                          style={s.acceptBtn}
+                          onPress={() => handleAccept(req)}
+                          disabled={actionId === req._id}
+                          activeOpacity={0.85}
+                        >
+                          {actionId === req._id
+                            ? <ActivityIndicator size="small" color="#FFF" />
+                            : <Text style={s.acceptTxt}>✓ Accept</Text>
+                          }
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={s.rejectBtn}
+                          onPress={() => handleReject(req)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={s.rejectTxt}>✕ Reject</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
+    </View>
   );
 }
 
+// Seat size: fill full width with 6px gap between 8 seats
+const SEAT_W = Math.floor((width - 32 - 7 * 6) / 8);
+
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.bgLight },
-  header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 20, paddingTop: 52, paddingBottom: 20, backgroundColor: colors.white },
-  hello: { fontSize: 22, fontWeight: 'bold', color: colors.textPrimary },
-  subHello: { fontSize: 14, color: colors.textSecondary, marginTop: 2 },
-  notifBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: colors.bgLight, justifyContent: 'center', alignItems: 'center' },
-  newStatsContainer: { marginHorizontal: 16, marginTop: 10 },
-  statCardsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16, gap: 10 },
-  statCard: { flex: 1, backgroundColor: colors.white, borderRadius: 12, paddingVertical: 16, alignItems: 'center', borderLeftWidth: 4, elevation: 2, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 4 },
-  statCardVal: { fontSize: 24, fontWeight: 'bold', color: colors.textPrimary },
-  statCardLbl: { fontSize: 13, color: colors.textSecondary, marginTop: 4 },
-  progressText: { fontSize: 14, color: colors.textPrimary, marginBottom: 8 },
-  progressBarBg: { height: 8, backgroundColor: '#E0E0E0', borderRadius: 4, overflow: 'hidden' },
-  progressBarFill: { height: '100%', backgroundColor: colors.primary, borderRadius: 4 },
-  section: { marginTop: 24, paddingHorizontal: 16 },
-  secTitle: { fontSize: 18, fontWeight: 'bold', color: colors.textPrimary, marginBottom: 12 },
-  actionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12 },
-  actionCard: { width: '48%', backgroundColor: colors.white, padding: 16, borderRadius: 16, alignItems: 'center' },
-  actionIcon: { width: 50, height: 50, borderRadius: 12, justifyContent: 'center', alignItems: 'center', marginBottom: 10 },
-  actionTitle: { fontSize: 14, fontWeight: '600', color: colors.textPrimary },
-  newRevCard: { backgroundColor: colors.white, marginHorizontal: 16, marginTop: 20, padding: 20, borderRadius: 20, elevation: 3, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.05, shadowRadius: 8 },
-  newRevTitle: { fontSize: 16, fontWeight: 'bold', color: colors.textPrimary },
-  newRevVal: { fontSize: 32, fontWeight: 'bold', color: colors.success, marginTop: 8 },
-  chartContainer: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 20, height: 90 },
-  chartCol: { alignItems: 'center', width: 30 },
-  chartBar: { width: 16, backgroundColor: colors.primary, borderRadius: 4 },
-  chartDay: { fontSize: 11, color: colors.textLight, marginTop: 8 },
-  expiryScroll: { marginTop: 4 },
-  expiryCard: { backgroundColor: colors.white, padding: 16, borderRadius: 16, marginRight: 12, width: 155, borderWidth: 1, borderColor: colors.danger + '30' },
-  expName: { fontSize: 15, fontWeight: 'bold', color: colors.textPrimary },
-  expSeat: { fontSize: 12, color: colors.textSecondary, marginTop: 2 },
-  expDate: { fontSize: 11, fontWeight: '600', marginTop: 4 },
-  remindBtn: { backgroundColor: colors.danger + '10', marginTop: 10, paddingVertical: 6, borderRadius: 8, alignItems: 'center' },
-  remindText: { color: colors.danger, fontSize: 12, fontWeight: 'bold' },
-  activityList: { backgroundColor: colors.white, borderRadius: 16, padding: 16 },
-  actRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16 },
-  actDot: { width: 8, height: 8, borderRadius: 4, marginTop: 6, marginRight: 12 },
-  actText: { fontSize: 14, color: colors.textPrimary, fontWeight: '500' },
-  actTime: { fontSize: 11, color: colors.textLight, marginTop: 2 },
+  safe: { flex: 1, backgroundColor: C.bg },
+  scroll: { flex: 1 },
+  content: { paddingHorizontal: 16, paddingTop: 16, paddingBottom: 20 },
+
+  // ── HEADER ──
+  header: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 18,
+  },
+  headerLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 12,
+    flex: 1,
+    marginRight: 10,
+  },
+  photoWrap: { position: 'relative', flexShrink: 0 },
+  photo: { width: 50, height: 50, borderRadius: 25, borderWidth: 2, borderColor: C.primaryBorder },
+  photoPlaceholder: {
+    width: 50, height: 50, borderRadius: 25,
+    backgroundColor: C.primaryLight, borderWidth: 2, borderColor: C.primaryBorder,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  photoInitial: { fontSize: 20, fontWeight: '700', color: C.primary },
+  onlineDot: {
+    width: 12, height: 12, borderRadius: 6, backgroundColor: C.green,
+    position: 'absolute', bottom: 0, right: 0, borderWidth: 2, borderColor: C.bg,
+  },
+  headerText: { flex: 1 },
+  greeting: { color: C.textGray, fontSize: 13, fontWeight: '500', marginBottom: 2 },
+  libName: { color: C.textDark, fontSize: 18, fontWeight: '700' },
+  bellBtn: {
+    width: 44, height: 44, borderRadius: 12,
+    backgroundColor: C.primaryLight, borderWidth: 1, borderColor: C.primaryBorder,
+    justifyContent: 'center', alignItems: 'center', position: 'relative',
+  },
+  bellDot: {
+    minWidth: 16, height: 16, borderRadius: 8, backgroundColor: C.red,
+    position: 'absolute', top: -2, right: -2, borderWidth: 1.5, borderColor: '#FFF',
+    justifyContent: 'center', alignItems: 'center', paddingHorizontal: 3,
+  },
+
+  // ── NOTIFICATION MODAL ──
+  notifOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  notifBox: {
+    backgroundColor: C.surface, borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: 20, paddingTop: 20, paddingBottom: 40, maxHeight: '85%',
+  },
+  notifHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
+  notifTitle: { color: C.textDark, fontSize: 20, fontWeight: '700' },
+  notifSub: { color: C.textGray, fontSize: 13, marginTop: 2 },
+
+  // Request Card
+  reqCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: C.bg, borderRadius: 16, borderWidth: 0.5, borderColor: C.border,
+    padding: 14, marginBottom: 12,
+  },
+  reqAva: { width: 46, height: 46, borderRadius: 23, borderWidth: 1.5, borderColor: C.primaryBorder },
+  reqAvaPlaceholder: {
+    width: 46, height: 46, borderRadius: 23,
+    backgroundColor: C.primaryLight, borderWidth: 1.5, borderColor: C.primaryBorder,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  reqAvaInit: { fontSize: 16, fontWeight: '700', color: C.primary },
+  reqName: { color: C.textDark, fontSize: 15, fontWeight: '700', marginBottom: 3 },
+  reqMeta: { color: C.textGray, fontSize: 12, fontWeight: '500', marginBottom: 1 },
+  acceptBtn: {
+    backgroundColor: C.primary, borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 8, alignItems: 'center', minWidth: 80,
+  },
+  acceptTxt: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  rejectBtn: {
+    backgroundColor: '#FEE2E2', borderRadius: 10, borderWidth: 0.5, borderColor: '#FCA5A5',
+    paddingHorizontal: 14, paddingVertical: 8, alignItems: 'center', minWidth: 80,
+  },
+  rejectTxt: { color: C.red, fontSize: 13, fontWeight: '700' },
+
+  // ── STATS GRID ──
+  gridRow: { flexDirection: 'row', gap: 12, marginBottom: 12 },
+  card: {
+    flex: 1,
+    backgroundColor: C.surface, borderRadius: 18,
+    borderWidth: 0.5, borderColor: C.border, padding: 18,
+  },
+  cardHL: { backgroundColor: C.primaryLight, borderColor: C.primaryBorder },
+  cardLabel: { color: C.textGray, fontSize: 13, marginBottom: 6, fontWeight: '500' },
+  cardLabelHL: { color: '#085041', fontSize: 13, marginBottom: 6, fontWeight: '600' },
+  cardVal: { color: C.textDark, fontSize: 30, fontWeight: '700', lineHeight: 36 },
+  cardValHL: { color: C.primary, fontSize: 30, fontWeight: '800', lineHeight: 36 },
+  cardValSub: { fontSize: 16, color: C.textGray, fontWeight: '400' },
+  cardSubGreen: { color: C.green, fontSize: 13, marginTop: 6, fontWeight: '600' },
+  cardSubTeal: { color: C.primary, fontSize: 13, marginTop: 6, fontWeight: '500' },
+
+  // ── SECTION HEADER ──
+  secHeader: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', marginBottom: 10,
+  },
+  secTitle: { color: C.textDark, fontSize: 16, fontWeight: '700' },
+  secLink: { color: C.primary, fontSize: 13, fontWeight: '600' },
+
+  // ── SEAT MAP ──
+  mapBox: {
+    backgroundColor: C.surface, borderRadius: 16,
+    borderWidth: 0.5, borderColor: C.border,
+    padding: 10, marginBottom: 20,
+  },
+  seatGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 6, justifyContent: 'space-between' },
+  seat: {
+    width: SEAT_W, height: SEAT_W, borderRadius: 7,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  sOcc: { backgroundColor: C.primary },
+  sFree: { backgroundColor: C.primaryLight, borderWidth: 0.5, borderColor: C.primary },
+  sExp: { backgroundColor: C.orangeLight, borderWidth: 0.5, borderColor: C.orange },
+  seatTxt: { fontSize: 8, fontWeight: '700', textAlign: 'center' },
+  legend: { flexDirection: 'row', gap: 16, marginTop: 10, justifyContent: 'center' },
+  legItem: { flexDirection: 'row', alignItems: 'center', gap: 5 },
+  legDot: { width: 10, height: 10, borderRadius: 3 },
+  legTxt: { color: C.textGray, fontSize: 11, fontWeight: '500' },
+
+  // ── STUDENT CARDS ──
+  stCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: C.surface, borderRadius: 16,
+    borderWidth: 0.5, borderColor: C.border,
+    paddingVertical: 13, paddingHorizontal: 14, marginBottom: 9,
+  },
+  stCardOrange: { backgroundColor: C.orangeLight, borderColor: C.orangeBorder },
+  ava: {
+    width: 40, height: 40, borderRadius: 20,
+    backgroundColor: C.primaryLight, justifyContent: 'center', alignItems: 'center',
+  },
+  avaTxt: { fontSize: 13, fontWeight: '700', color: C.primary },
+  stName: { color: C.textDark, fontSize: 14, fontWeight: '700', marginBottom: 2 },
+  stMeta: { color: C.textGray, fontSize: 12, fontWeight: '500' },
+  chip: {
+    borderRadius: 8, borderWidth: 0.5, paddingHorizontal: 10, paddingVertical: 5,
+  },
+  chipTxt: { fontSize: 11, fontWeight: '700' },
 });

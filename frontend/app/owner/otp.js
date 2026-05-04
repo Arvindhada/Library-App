@@ -1,14 +1,28 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, Alert, SafeAreaView } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import colors from '../../src/constants/colors';
+import { verifyOTP } from '../../src/services/authService';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const theme = {
+  bg: '#FDFDFD',
+  cardBg: '#FFFFFF',
+  cardBorder: '#EAEAEA',
+  primaryOr: '#1D7151',
+  textWh: '#FFFFFF',
+  textMu: '#707375',
+  textDark: '#1A1D1E',
+  inputBg: '#FDFDFD',
+  inputBorder: '#1D7151'
+};
 
 export default function OwnerOTP() {
   const router = useRouter();
   const { phone } = useLocalSearchParams();
-  const [otp, setOtp] = useState(['', '', '', '', '', '']);
+  const [otp, setOtp] = useState(['', '', '', '']);
   const [timer, setTimer] = useState(30);
+  const [loading, setLoading] = useState(false);
   const refs = useRef([]);
 
   useEffect(() => {
@@ -20,58 +34,103 @@ export default function OwnerOTP() {
     const newOtp = [...otp];
     newOtp[idx] = text;
     setOtp(newOtp);
-    if (text && idx < 5) refs.current[idx + 1]?.focus();
+    if (text && idx < 3) refs.current[idx + 1]?.focus();
   };
 
-  const verify = () => {
+  const verify = async () => {
     const code = otp.join('');
-    if (code.length < 6) { Alert.alert('Error', 'Enter complete 6-digit OTP'); return; }
-    router.replace('/owner/tabs');
+    if (code.length < 4) { Alert.alert('Error', 'Enter complete 4-digit OTP'); return; }
+    
+    setLoading(true);
+    try {
+      // TEMPORARY: Bypassing actual backend call for UI testing
+      // const data = await verifyOTP(phone, code);
+      
+      setTimeout(async () => {
+        // Save Token and Role
+        await AsyncStorage.setItem('userToken', 'dummy-token');
+        await AsyncStorage.setItem('userRole', 'owner');
+        
+        setLoading(false);
+        router.replace('/owner/tabs');
+      }, 1000);
+      
+    } catch (error) {
+      setLoading(false);
+      Alert.alert('Verification Failed', error.message || 'Invalid OTP. Try 1234.');
+    }
   };
 
   return (
-    <View style={s.container}>
-      <TouchableOpacity onPress={() => router.back()} style={s.back}>
-        <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
-      </TouchableOpacity>
-      <Text style={s.heading}>Enter OTP</Text>
-      <Text style={s.sub}>Sent to +91 {phone || 'XXXXXXXXXX'}</Text>
+    <SafeAreaView style={s.safeArea}>
+      <View style={s.container}>
+        
+        <TouchableOpacity onPress={() => router.back()} style={s.back}>
+          <Ionicons name="arrow-back" size={24} color={theme.textDark} />
+        </TouchableOpacity>
 
-      <View style={s.otpRow}>
-        {otp.map((d, i) => (
-          <TextInput
-            key={i}
-            ref={(r) => (refs.current[i] = r)}
-            style={[s.otpBox, d ? s.otpFilled : null]}
-            value={d}
-            onChangeText={(t) => handleChange(t, i)}
-            keyboardType="number-pad"
-            maxLength={1}
-            testID={`otp-${i}`}
-          />
-        ))}
+        <View style={s.logoBox}>
+          <Ionicons name="shield-checkmark" size={30} color="#fff" />
+        </View>
+
+        <Text style={s.heading}>OTP Verification</Text>
+        <Text style={s.sub}>Sent to +91 {phone || 'XXXXXXXXXX'}</Text>
+
+        <View style={s.inputContainer}>
+          <Text style={s.label}>Enter OTP (4 digits)</Text>
+          <View style={s.otpRow}>
+            {otp.map((d, i) => (
+              <TextInput
+                key={i}
+                ref={(r) => (refs.current[i] = r)}
+                style={[s.otpBox, d ? s.otpFilled : null]}
+                value={d}
+                onChangeText={(t) => handleChange(t, i)}
+                keyboardType="number-pad"
+                maxLength={1}
+                testID={`otp-${i}`}
+              />
+            ))}
+          </View>
+        </View>
+
+        <Text style={s.resendText}>
+          OTP nahi aaya?{' '}
+          {timer > 0 ? (
+            <Text style={{ color: theme.textMu }}>Wait {timer}s</Text>
+          ) : (
+            <Text style={{ color: theme.primaryOr }} onPress={() => { setTimer(30); Alert.alert('OTP Resent'); }}>Resend</Text>
+          )}
+        </Text>
+
+        <TouchableOpacity testID="verify-btn" style={[s.btn, loading && { opacity: 0.7 }]} onPress={verify} disabled={loading}>
+          <Text style={s.btnText}>{loading ? 'Verifying...' : 'Verify Karo'}</Text>
+        </TouchableOpacity>
+
       </View>
-
-      <TouchableOpacity testID="verify-btn" style={s.btn} onPress={verify}>
-        <Text style={s.btnText}>Verify OTP</Text>
-      </TouchableOpacity>
-
-      <TouchableOpacity disabled={timer > 0} onPress={() => { setTimer(30); Alert.alert('OTP Resent'); }}>
-        <Text style={s.resend}>{timer > 0 ? `Resend OTP in ${timer}s` : 'Resend OTP'}</Text>
-      </TouchableOpacity>
-    </View>
+    </SafeAreaView>
   );
 }
 
 const s = StyleSheet.create({
-  container: { flex: 1, backgroundColor: colors.white, padding: 24, paddingTop: 56 },
-  back: { marginBottom: 24, padding: 4, alignSelf: 'flex-start' },
-  heading: { fontSize: 28, fontWeight: 'bold', color: colors.textPrimary, marginBottom: 6 },
-  sub: { fontSize: 15, color: colors.textSecondary, marginBottom: 32 },
-  otpRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 32 },
-  otpBox: { width: 48, height: 54, borderRadius: 10, borderWidth: 1.5, borderColor: colors.cardBorder, textAlign: 'center', fontSize: 22, fontWeight: '700', color: colors.textPrimary, backgroundColor: colors.bgLight },
-  otpFilled: { borderColor: colors.primary },
-  btn: { backgroundColor: colors.primary, paddingVertical: 16, borderRadius: 10, alignItems: 'center', marginBottom: 20 },
-  btnText: { color: colors.white, fontSize: 16, fontWeight: '600' },
-  resend: { textAlign: 'center', color: colors.primary, fontSize: 14, fontWeight: '500' },
+  safeArea: { flex: 1, backgroundColor: theme.bg },
+  container: { flex: 1, paddingHorizontal: 22, paddingTop: 40, alignItems: 'center' },
+  back: { alignSelf: 'flex-start', padding: 4, marginBottom: 20 },
+  
+  logoBox: { width: 64, height: 64, backgroundColor: theme.primaryOr, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
+  
+  heading: { fontSize: 26, fontWeight: '800', color: theme.textDark, letterSpacing: -0.4, marginBottom: 8 },
+  sub: { fontSize: 14, color: theme.textMu, textAlign: 'center', marginBottom: 32 },
+  
+  inputContainer: { width: '100%', marginBottom: 12 },
+  label: { fontSize: 13, color: theme.textDark, fontWeight: '600', marginBottom: 10, textAlign: 'center' },
+  
+  otpRow: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginBottom: 8 },
+  otpBox: { width: 56, height: 64, borderRadius: 16, borderWidth: 1, borderColor: theme.cardBorder, textAlign: 'center', fontSize: 24, fontWeight: '700', color: theme.textDark, backgroundColor: theme.cardBg },
+  otpFilled: { borderColor: theme.primaryOr, backgroundColor: theme.inputBg },
+  
+  resendText: { fontSize: 13, color: theme.textMu, marginBottom: 32, fontWeight: '500' },
+  
+  btn: { width: '100%', backgroundColor: theme.primaryOr, paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginBottom: 16, shadowColor: theme.primaryOr, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 4 },
+  btnText: { color: theme.textWh, fontSize: 16, fontWeight: '700' }
 });

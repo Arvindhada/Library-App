@@ -7,7 +7,7 @@ import { useApp } from '../src/context/AppContext';
 
 export default function SplashScreen() {
   const router = useRouter();
-  const { setUserRole } = useApp();
+  const {setUserRole}  = useApp();
 
   const handleOwner = () => {
     setUserRole('owner');
