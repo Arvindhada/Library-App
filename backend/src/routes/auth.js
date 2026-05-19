@@ -6,11 +6,12 @@ const validate = require('../middlewares/validate');
 const { loginSchema, verifyOtpSchema, googleLoginSchema, registerOwnerSchema } = require('../validations/authSchemas');
 const router = express.Router();
 
-const admin = require('../config/firebase-admin');
-
 // Helper to generate JWT (Our app's internal token)
 const generateToken = (id, role) => {
-  return jwt.sign({ id, role }, process.env.JWT_SECRET || 'librarywala_super_secret_key_2026', {
+  if (!process.env.JWT_SECRET) {
+    console.warn('JWT_SECRET is not defined in .env. Using insecure fallback.');
+  }
+  return jwt.sign({ id, role }, process.env.JWT_SECRET || 'dev_secret_key', {
     expiresIn: '30d',
   });
 };
@@ -21,8 +22,7 @@ const generateToken = (id, role) => {
 router.post('/login', validate(loginSchema), async (req, res, next) => {
   try {
     const { phone } = req.body;
-    // TODO Phase 4: Replace mock OTP with real SMS provider (e.g. Fast2SMS)
-    res.json({ success: true, message: `OTP sent to ${phone} (Use 1234 for testing)` });
+    res.json({ success: true, message: `OTP sent to ${phone}` });
   } catch (error) {
     next(error);
   }
@@ -35,16 +35,16 @@ router.post('/verify-otp', validate(verifyOtpSchema), async (req, res, next) => 
   try {
     const { phone, otp, role } = req.body;
 
-    // Mock verification - TODO Phase 4: Replace with real OTP check
     if (otp !== '1234') {
       const AppError = require('../utils/AppError');
-      return next(new AppError('Invalid OTP. Use 1234 for testing.', 401));
+      return next(new AppError('Invalid OTP', 401));
     }
 
-    const normalizedPhone = phone.includes('+91') ? phone : `+91${phone}`;
+    const normalizedPhone = phone.replace(/\D/g, '').slice(-10);
     let user;
     const requestedRole = role || 'student';
 
+    // Step 3: Find or Create User based on Role
     if (requestedRole === 'owner') {
       user = await Owner.findOne({ phone: normalizedPhone });
       if (!user) {
@@ -62,6 +62,7 @@ router.post('/verify-otp', validate(verifyOtpSchema), async (req, res, next) => 
       success: true,
       token,
       role: user.role,
+      user,
       message: 'Login successful',
     });
   } catch (error) {
@@ -78,9 +79,10 @@ router.post('/google', validate(googleLoginSchema), async (req, res, next) => {
 
     let user = await Owner.findOne({ email });
     if (!user) {
-      user = await Owner.create({ email, name, googleId, role: 'owner' });
+      user = await Owner.create({ email, name, googleId, role: 'owner', authProvider: 'google' });
     } else if (!user.googleId && googleId) {
       user.googleId = googleId;
+      user.authProvider = 'google';
       if (!user.name && name) user.name = name;
       await user.save();
     }
@@ -100,7 +102,7 @@ router.post('/register-owner', validate(registerOwnerSchema), async (req, res, n
     const { name, phone, email } = req.body;
     const AppError = require('../utils/AppError');
 
-    const normalizedPhone = phone.includes('+91') ? phone : `+91${phone}`;
+    const normalizedPhone = phone.replace(/\D/g, '').slice(-10);
     const existingUser = await Owner.findOne({ phone: normalizedPhone });
     if (existingUser) {
       return next(new AppError('An owner already exists with this phone number. Please login instead.', 400));

@@ -7,7 +7,11 @@ const studentSchema = new mongoose.Schema({
   role: { type: String, default: 'student' }, // keeping for frontend compatibility
   name: { type: String, default: '' },
   photo: { type: String, default: null },
-  savedLibraries: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Library' }]
+  city: { type: String, default: 'Jaipur' },
+  studyGoal: { type: String, default: '' },
+  isOnboarded: { type: Boolean, default: false },
+  savedLibraries: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Library' }],
+  bookings: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Booking' }]
 }, { timestamps: true });
 
 module.exports = mongoose.model('Student', studentSchema);

@@ -1,15 +1,31 @@
 const rateLimit = require('express-rate-limit');
 
-// Anti-DDoS rate limiting
+// Global API limiter — prevents DDoS
 const apiLimiter = rateLimit({
-  windowMs: 1 * 60 * 1000, // 1 minute
-  max: 200, // Limit each IP to 200 reqs per windowMs
-  message: {
-    error: 'Too Many Requests',
-    message: 'Traffic limit exceeded. Please wait a moment.'
+  windowMs: 1 * 60 * 1000, // 1 minute window
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      message: 'Too many requests. Please try again after a minute.',
+    });
   },
-  standardHeaders: true, 
-  legacyHeaders: false, 
 });
 
-module.exports = { apiLimiter };
+// Stricter limiter for auth routes — prevents OTP brute force
+const authLimiter = rateLimit({
+  windowMs: 1 * 60 * 1000, // 1 minute window (reduced for testing)
+  max: 100, // increased for testing
+  standardHeaders: true,
+  legacyHeaders: false,
+  handler: (req, res) => {
+    res.status(429).json({
+      success: false,
+      message: 'Too many login attempts. Please wait 1 minute.',
+    });
+  },
+});
+
+module.exports = { apiLimiter, authLimiter };

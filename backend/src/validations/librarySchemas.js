@@ -12,6 +12,9 @@ const librarySchema = Joi.object({
     'any.required': 'Address is required.',
   }),
   area: Joi.string().min(2).max(100).optional().allow(''),
+  city: Joi.string().min(2).max(100).optional().allow(''),
+  lat: Joi.number().optional(),
+  lng: Joi.number().optional(),
   total_seats: Joi.number().integer().min(1).max(1000).required().messages({
     'number.min': 'Total seats must be at least 1.',
     'number.max': 'Total seats cannot exceed 1000.',
@@ -20,25 +23,21 @@ const librarySchema = Joi.object({
   available_seats: Joi.number().integer().min(0).optional(),
   ac_available: Joi.boolean().optional().default(false),
   wifi_available: Joi.boolean().optional().default(false),
-  whatsapp: Joi.string().pattern(/^[6-9]\d{9}$/).optional().allow('').messages({
+  whatsapp: Joi.string().optional().allow('').messages({
     'string.pattern.base': 'WhatsApp must be a valid 10-digit number.',
   }),
   open_time: Joi.string().optional().allow(''),
-  half_time_fee: Joi.number().min(0).optional().messages({
-    'number.min': 'Half time fee cannot be negative.',
-  }),
-  full_time_fee: Joi.number().min(0).optional().messages({
-    'number.min': 'Full time fee cannot be negative.',
-  }),
+  half_time_fee: Joi.number().min(0).optional().default(0),
+  full_time_fee: Joi.number().min(0).optional().default(0),
   facilities: Joi.array().items(Joi.string()).optional(),
   photos: Joi.array().items(Joi.string().uri()).optional().messages({
     'string.uri': 'Each photo must be a valid URL.',
   }),
-});
+}).unknown();
 
 // Schema for save/unsave library
 const saveLibrarySchema = Joi.object({
-  userId: Joi.string().hex().length(24).required().messages({
+  userId: Joi.string().hex().length(24).optional().messages({
     'string.hex': 'Invalid user ID format.',
     'string.length': 'Invalid user ID format.',
     'any.required': 'User ID is required.',

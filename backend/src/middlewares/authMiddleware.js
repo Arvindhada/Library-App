@@ -4,39 +4,45 @@ const Owner = require('../models/Owner');
 const AppError = require('../utils/AppError');
 
 const protect = async (req, res, next) => {
-  let token;
+  try {
+    const authHeader = req.headers.authorization;
 
-  if (
-    req.headers.authorization &&
-    req.headers.authorization.startsWith('Bearer')
-  ) {
-    try {
-      token = req.headers.authorization.split(' ')[1];
-      const decoded = jwt.verify(token, process.env.JWT_SECRET || 'librarywala_super_secret_key_2026');
-
-      // Fetch user from the correct collection based on role stored in token
-      if (decoded.role === 'owner') {
-        req.user = await Owner.findById(decoded.id);
-      } else {
-        req.user = await Student.findById(decoded.id);
-      }
-      
-      if (!req.user) {
-        return next(new AppError('Not authorized, user not found in the system', 401));
-      }
-
-      // Attach role explicitly just in case (though it's in the model)
-      req.user.role = decoded.role;
-      next();
-    } catch (error) {
-      res.status(401);
-      next(new Error('Not authorized, token failed'));
+    if (!authHeader || !authHeader.startsWith('Bearer ')) {
+      return next(new AppError('Not authorized. Please login first.', 401));
     }
-  }
 
-  if (!token) {
-    res.status(401);
-    next(new Error('Not authorized, no token'));
+    const token = authHeader.split(' ')[1];
+    if (!token) {
+      return next(new AppError('Token missing. Please login again.', 401));
+    }
+
+    let decoded;
+    try {
+      decoded = jwt.verify(token, process.env.JWT_SECRET || 'librarywala_super_secret_key_2026');
+    } catch (jwtError) {
+      if (jwtError.name === 'TokenExpiredError') {
+        return next(new AppError('Session expired. Please login again.', 401));
+      }
+      return next(new AppError('Invalid token. Please login again.', 401));
+    }
+
+    let user;
+    if (decoded.role === 'owner') {
+      user = await Owner.findById(decoded.id).select('-__v');
+    } else {
+      user = await Student.findById(decoded.id).select('-__v');
+    }
+
+    if (!user) {
+      return next(new AppError('Account not found. Please register again.', 401));
+    }
+
+    req.user = user;
+    req.user.role = decoded.role;
+    next();
+
+  } catch (error) {
+    next(new AppError('Authentication failed. Please try again.', 500));
   }
 };
 

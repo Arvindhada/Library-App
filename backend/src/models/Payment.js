@@ -8,7 +8,7 @@ const paymentSchema = new mongoose.Schema({
   },
   student: {
     type: mongoose.Schema.Types.ObjectId,
-    ref: 'User',
+    ref: 'Student',
     required: true,
   },
   library: {
@@ -22,20 +22,25 @@ const paymentSchema = new mongoose.Schema({
   },
   method: {
     type: String,
-    enum: ['UPI', 'Cash', 'Card', 'Other'],
+    enum: ['UPI', 'Cash', 'Card', 'Online', 'Bank Transfer', 'Other'],
     default: 'Cash',
+  },
+  status: {
+    type: String,
+    enum: ['Paid', 'Missed', 'Pending'],
+    default: 'Paid',
   },
   note: {
     type: String,
     default: '',
   },
-  paidDate: {
+  paidAt: {
     type: Date,
     default: Date.now,
   },
 }, { timestamps: true });
 
-paymentSchema.index({ library: 1, paidDate: -1 });
+paymentSchema.index({ library: 1, paidAt: -1 });
 paymentSchema.index({ student: 1 });
 paymentSchema.index({ booking: 1 });
 

@@ -4,6 +4,9 @@ const { protect } = require('../middlewares/authMiddleware');
 const validate = require('../middlewares/validate');
 const { librarySchema, saveLibrarySchema } = require('../validations/librarySchemas');
 const AppError = require('../utils/AppError');
+const Owner = require('../models/Owner');
+const Student = require('../models/Student');
+const Booking = require('../models/Booking');
 const router = express.Router();
 
 // @route   POST /api/libraries
@@ -11,15 +14,45 @@ const router = express.Router();
 // @access  Private
 router.post('/', protect, validate(librarySchema), async (req, res, next) => {
   try {
+
     const existing = await Library.findOne({ owner_id: req.user._id });
-    if (existing) return next(new AppError('You already have a library registered.', 400));
+    if (existing) {
+      return next(new AppError('You already have a library registered.', 400));
+    }
 
     const library = await Library.create({
       ...req.body,
       owner_id: req.user._id,
-      available_seats: req.body.available_seats ?? req.body.total_seats, // default to total
+      available_seats: req.body.available_seats ?? req.body.total_seats,
     });
-    res.status(201).json({ success: true, library });
+
+    // Link library to Owner
+    const updatedOwner = await Owner.findByIdAndUpdate(
+      req.user._id, 
+      { library: library._id },
+      { new: true }
+    );
+
+    res.status(201).json({ 
+      success: true, 
+      library,
+      message: 'Library registered successfully' 
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// @route   GET /api/libraries/my-library
+// @desc    Owner gets their own library
+// @access  Private
+router.get('/my-library', protect, async (req, res, next) => {
+  try {
+    const library = await Library.findOne({ owner_id: req.user._id });
+    if (!library) {
+      return res.json({ success: true, library: null, message: 'No library found. Please create one.' });
+    }
+    res.json({ success: true, library });
   } catch (error) {
     next(error);
   }
@@ -97,12 +130,11 @@ router.put('/:id', protect, validate(librarySchema), async (req, res, next) => {
 
 // @route   POST /api/libraries/save
 // @desc    Student saves a library
-// @access  Public
-router.post('/save', validate(saveLibrarySchema), async (req, res, next) => {
+// @access  Private
+router.post('/save', protect, validate(saveLibrarySchema), async (req, res, next) => {
   try {
-    const { userId, libraryId } = req.body;
-    const Student = require('../models/Student');
-    await Student.findByIdAndUpdate(userId, { $addToSet: { savedLibraries: libraryId } });
+    const { libraryId } = req.body;
+    await Student.findByIdAndUpdate(req.user._id, { $addToSet: { savedLibraries: libraryId } });
     res.json({ success: true, message: 'Library saved' });
   } catch (error) {
     next(error);
@@ -111,13 +143,36 @@ router.post('/save', validate(saveLibrarySchema), async (req, res, next) => {
 
 // @route   POST /api/libraries/unsave
 // @desc    Student removes a saved library
-// @access  Public
-router.post('/unsave', validate(saveLibrarySchema), async (req, res, next) => {
+// @access  Private
+router.post('/unsave', protect, validate(saveLibrarySchema), async (req, res, next) => {
   try {
-    const { userId, libraryId } = req.body;
-    const Student = require('../models/Student');
-    await Student.findByIdAndUpdate(userId, { $pull: { savedLibraries: libraryId } });
+    const { libraryId } = req.body;
+    await Student.findByIdAndUpdate(req.user._id, { $pull: { savedLibraries: libraryId } });
     res.json({ success: true, message: 'Library unsaved' });
+  } catch (error) {
+    next(error);
+  }
+});
+
+// @route   GET /api/libraries/:id/seats
+// @desc    Get live seat occupancy for a library (Public/Student)
+// @access  Public
+router.get('/:id/seats', async (req, res, next) => {
+  try {
+    const activeBookings = await Booking.find({ 
+      library: req.params.id, 
+      status: 'Active' 
+    }).select('seat shift');
+
+    const occupancy = {};
+    activeBookings.forEach(b => {
+      if (b.seat) {
+        if (!occupancy[b.seat]) occupancy[b.seat] = [];
+        occupancy[b.seat].push(b.shift);
+      }
+    });
+
+    res.json({ success: true, occupancy });
   } catch (error) {
     next(error);
   }

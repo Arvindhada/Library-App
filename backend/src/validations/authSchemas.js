@@ -3,7 +3,7 @@ const Joi = require('joi');
 // Schema for sending OTP
 const loginSchema = Joi.object({
   phone: Joi.string()
-    .pattern(/^[6-9]\d{9}$/)
+    .pattern(/^\+?91[6-9]\d{9}$|^[6-9]\d{9}$/)
     .required()
     .messages({
       'string.pattern.base': 'Phone number must be a valid 10-digit Indian mobile number.',
@@ -14,7 +14,7 @@ const loginSchema = Joi.object({
 // Schema for verifying OTP
 const verifyOtpSchema = Joi.object({
   phone: Joi.string()
-    .pattern(/^[6-9]\d{9}$/)
+    .pattern(/^\+?91[6-9]\d{9}$|^[6-9]\d{9}$/)
     .required()
     .messages({
       'string.pattern.base': 'Phone number must be a valid 10-digit Indian mobile number.',
@@ -50,5 +50,14 @@ const registerOwnerSchema = Joi.object({
     }),
   email: Joi.string().email().optional().allow(''),
 });
+// Schema for Profile Update
+const updateProfileSchema = Joi.object({
+  name: Joi.string().min(2).max(50).optional().allow(''),
+  phone: Joi.alternatives().try(Joi.string(), Joi.number()).optional().allow('', null),
+  photo: Joi.any().optional(),
+  city: Joi.string().optional().allow(''),
+  studyGoal: Joi.string().max(100).optional().allow(''),
+  upi_id: Joi.string().optional().allow('')
+});
 
-module.exports = { loginSchema, verifyOtpSchema, googleLoginSchema, registerOwnerSchema };
+module.exports = { loginSchema, verifyOtpSchema, googleLoginSchema, registerOwnerSchema, updateProfileSchema };
