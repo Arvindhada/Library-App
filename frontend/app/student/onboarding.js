@@ -1,18 +1,21 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Image, Alert } from 'react-native';
+import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Image, Alert, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import colors from '../../src/constants/colors';
 import { useApp } from '../../src/context/AppContext';
+import axios from 'axios';
+import { API_ENDPOINTS } from '../../src/services/apiConfig';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function StudentOnboarding() {
   const router = useRouter();
-  const { setStudentData } = useApp();
-  const [name, setName] = useState('');
-  const [goal, setGoal] = useState('');
-  const [phone, setPhone] = useState('');
-  const [photo, setPhoto] = useState(null);
+  const { studentData, setStudentData, setUserRole } = useApp();
+  const [name, setName] = useState(studentData?.name || '');
+  const [goal, setGoal] = useState(studentData?.studyGoal || '');
+  const [photo, setPhoto] = useState(studentData?.photo || null);
+  const [loading, setLoading] = useState(false);
 
   const pickImage = async () => {
     const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
@@ -21,10 +24,96 @@ export default function StudentOnboarding() {
     if (!result.canceled) setPhoto(result.assets[0].uri);
   };
 
-  const handleSubmit = () => {
-    if (!name.trim()) { Alert.alert('Error', 'Please enter your name'); return; }
-    setStudentData({ name: name.trim(), studyGoal: goal.trim(), phone, photo });
-    router.replace('/student/tabs');
+  const uploadPhoto = async (photoUri, token) => {
+    try {
+      const formData = new FormData();
+      
+      if (Platform.OS === 'web') {
+        const res = await fetch(photoUri);
+        const blob = await res.blob();
+        formData.append('image', blob, 'profile.jpg');
+      } else {
+        const filename = photoUri.split('/').pop() || 'photo.jpg';
+        const match = /\.(\w+)$/.exec(filename);
+        const type = match ? `image/${match[1]}` : `image/jpeg`;
+        formData.append('image', { uri: photoUri, name: filename, type });
+      }
+      
+      const uploadRes = await axios.post(API_ENDPOINTS.UPLOAD, formData, {
+        headers: {
+          'Content-Type': 'multipart/form-data',
+          Authorization: `Bearer ${token}`
+        }
+      });
+      
+      if (uploadRes.data?.success) {
+        return uploadRes.data.url;
+      }
+      return null;
+    } catch (error) {
+      console.error('Photo upload failed:', error.response?.data || error.message);
+      return null;
+    }
+  };
+
+  const handleSubmit = async () => {
+    // 1. Name Validation (Letters only)
+    const nameRegex = /^[a-zA-Z\s]+$/;
+    if (!name.trim()) {
+      Alert.alert('Error', 'Please enter your name');
+      return;
+    }
+    if (!nameRegex.test(name.trim())) {
+      Alert.alert('Error', 'Name must contain letters only');
+      return;
+    }
+
+    // 2. Study Goal Validation
+    if (!goal.trim()) {
+      Alert.alert('Error', 'Please specify what you are studying');
+      return;
+    }
+
+    setLoading(true);
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) {
+        Alert.alert('Error', 'Session expired. Please login again.');
+        router.replace('/student/login');
+        return;
+      }
+
+      // Upload photo if selected
+      let uploadedPhotoUrl = null;
+      if (photo && !photo.startsWith('http')) {
+        uploadedPhotoUrl = await uploadPhoto(photo, token);
+      }
+
+      // Update Profile with Name, Study Goal, and Photo
+      const profilePayload = {
+        name: name.trim(),
+        studyGoal: goal.trim(),
+      };
+      if (uploadedPhotoUrl) {
+        profilePayload.photo = uploadedPhotoUrl;
+      } else if (photo && photo.startsWith('http')) {
+        profilePayload.photo = photo;
+      }
+
+      const profileRes = await axios.put(API_ENDPOINTS.USERS + '/profile', profilePayload, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+
+      if (profileRes.data?.success) {
+        setStudentData(profileRes.data.user);
+        router.replace('/student/tabs');
+      }
+    } catch (error) {
+      console.error('Onboarding failed:', error.response?.data || error.message);
+      Alert.alert('Error', error.response?.data?.message || 'Something went wrong. Please try again.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -49,14 +138,10 @@ export default function StudentOnboarding() {
         <Text style={s.label}>What are you studying?</Text>
         <TextInput testID="goal-input" style={s.input} placeholder="e.g. UPSC, NEET, B.Tech, CA..." value={goal} onChangeText={setGoal} />
 
-        <Text style={s.label}>Mobile Number</Text>
-        <View style={s.phoneRow}>
-          <Text style={s.prefix}>+91</Text>
-          <TextInput testID="phone-input" style={s.phoneInput} placeholder="9876543210" value={phone} onChangeText={setPhone} keyboardType="phone-pad" maxLength={10} />
-        </View>
 
-        <TouchableOpacity testID="lets-go-btn" style={s.btn} onPress={handleSubmit} activeOpacity={0.8}>
-          <Text style={s.btnText}>Let's Go!</Text>
+
+        <TouchableOpacity testID="lets-go-btn" style={s.btn} onPress={handleSubmit} activeOpacity={0.8} disabled={loading}>
+          {loading ? <ActivityIndicator color="#FFF" /> : <Text style={s.btnText}>Let&apos;s Go!</Text>}
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>

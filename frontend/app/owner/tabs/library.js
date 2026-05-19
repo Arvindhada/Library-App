@@ -32,9 +32,9 @@ export default function OwnerLibrary() {
       setArea(currentLibrary.area || '');
       setTotalSeats(String(currentLibrary.total_seats || ''));
       setWhatsapp(currentLibrary.whatsapp || '');
-      setOpenTime(currentLibrary.openTime || '');
-      setHalfFee(String(currentLibrary.halfTime?.fee || ''));
-      setFullFee(String(currentLibrary.fullTime?.fee || ''));
+      setOpenTime(currentLibrary.open_time || '');
+      setHalfFee(String(currentLibrary.half_time_fee || ''));
+      setFullFee(String(currentLibrary.full_time_fee || ''));
       setSelectedFacilities(currentLibrary.facilities || []);
     }
   }, [currentLibrary]);
@@ -64,9 +64,9 @@ export default function OwnerLibrary() {
           area: area.trim(),
           total_seats: parseInt(totalSeats, 10) || currentLibrary.total_seats,
           whatsapp: whatsapp.trim(),
-          openTime: openTime.trim(),
-          halfTime: { fee: parseInt(halfFee, 10) || 0 },
-          fullTime: { fee: parseInt(fullFee, 10) || 0 },
+          open_time: openTime.trim(),
+          half_time_fee: parseInt(halfFee, 10) || 0,
+          full_time_fee: parseInt(fullFee, 10) || 0,
           facilities: selectedFacilities,
         },
         { headers: { Authorization: `Bearer ${token}` } }

@@ -1,18 +1,23 @@
 // Seat Manager — Backend Connected
 import React, { useState, useMemo } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, TextInput, Alert, KeyboardAvoidingView, Platform, RefreshControl } from 'react-native';
-import { useRouter } from 'expo-router';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, TextInput, Alert, KeyboardAvoidingView, Platform, RefreshControl, ActivityIndicator } from 'react-native';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import colors from '../../src/constants/colors';
 import { useApp } from '../../src/context/AppContext';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios';
+import { API_ENDPOINTS } from '../../src/services/apiConfig';
 import SeatBox from '../../src/components/SeatBox';
 
 export default function SeatManager() {
   const router = useRouter();
-  const { currentLibrary, currentBookings, fetchDashboardData, loading } = useApp();
+  const { bookingId, studentName } = useLocalSearchParams();
+  const { currentLibrary, currentBookings, seatMap, fetchDashboardData, loading } = useApp();
 
   const total = currentLibrary?.total_seats || 0;
   const [totalInput, setTotalInput] = useState(String(total));
+  const [assigningId, setAssigningId] = useState(null); // Track which seat is being assigned
 
   const today = new Date();
 
@@ -20,20 +25,21 @@ export default function SeatManager() {
     const arr = [];
     const totalSeats = parseInt(totalInput, 10) || total || 80;
     for (let i = 1; i <= totalSeats; i++) {
-      const booking = currentBookings.find(b => b.status === 'Active' && parseInt(b.seat, 10) === i);
-      const isFeeDue = booking ? new Date(booking.endDate) < today : false;
+      const seatData = seatMap?.[String(i)];
+      const isFeeDue = seatData ? new Date(seatData.endDate) < today : false;
+      
       arr.push({
         number: i,
-        booked: !!booking,
-        studentName: booking?.student?.name,
-        studentPhone: booking?.student?.phone,
-        studentExpiry: booking ? new Date(booking.endDate).toLocaleDateString() : null,
-        studentPlan: booking?.shift,
+        booked: !!seatData,
+        studentName: seatData?.name,
+        studentPhone: seatData?.phone,
+        studentExpiry: seatData ? new Date(seatData.endDate).toLocaleDateString() : null,
+        studentPlan: seatData?.shift,
         isFeeDue,
       });
     }
     return arr;
-  }, [totalInput, currentBookings, total]);
+  }, [totalInput, seatMap, total]);
 
   const vacant = seats.filter(s => !s.booked).length;
   const booked = seats.filter(s => s.booked).length;
@@ -47,7 +53,53 @@ export default function SeatManager() {
     }
   };
 
+  const handleAssignSeat = async (seatNumber) => {
+    if (!bookingId || assigningId) return;
+
+    setAssigningId(seatNumber);
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      if (!token) throw new Error('No auth token found');
+
+      await axios.put(
+        `${API_ENDPOINTS.BOOKINGS}/${bookingId}/status`,
+        { status: 'Active', seat: String(seatNumber) },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+
+      Alert.alert('✅ Success', `Seat ${seatNumber} allotted to ${studentName}!`);
+      
+      // Small delay to allow DB to propagate
+      setTimeout(async () => {
+        await fetchDashboardData();
+        router.back();
+      }, 500);
+    } catch (e) {
+      console.error('Assign seat error:', e);
+      Alert.alert('❌ Error', e.response?.data?.message || 'Failed to allot seat. Try again.');
+    } finally {
+      setAssigningId(null);
+    }
+  };
+
   const onSeatPress = (seat) => {
+    // If in assignment mode (coming from requests)
+    if (bookingId) {
+      if (seat.booked) {
+        Alert.alert('Occupied', 'This seat is already taken. Please pick a free seat.');
+      } else {
+        Alert.alert(
+          'Assign Seat',
+          `Do you want to assign Seat ${seat.number} to ${studentName}?`,
+          [
+            { text: 'Cancel', style: 'cancel' },
+            { text: 'Yes, Allot', onPress: () => handleAssignSeat(seat.number) }
+          ]
+        );
+      }
+      return;
+    }
+
     if (seat.booked) {
       const statusText = seat.isFeeDue
         ? `\n⚠️ Fee Status: Overdue (Expired: ${seat.studentExpiry})`
@@ -96,6 +148,20 @@ export default function SeatManager() {
           style={{ flex: 1 }}
           refreshControl={<RefreshControl refreshing={loading} onRefresh={fetchDashboardData} colors={[colors.primary]} />}
         >
+
+          {/* ── ASSIGNMENT MODE BANNER ── */}
+          {bookingId && (
+            <View style={s.assignBanner}>
+              <View style={s.assignInfo}>
+                <Ionicons name="information-circle" size={24} color="#FFF" />
+                <View>
+                  <Text style={s.assignTitle}>Assignment Mode: {studentName}</Text>
+                  <Text style={s.assignSubtitle}>Tap a vacant seat to allot it</Text>
+                </View>
+              </View>
+              {assigningId && <ActivityIndicator color="#FFF" style={{ marginLeft: 10 }} />}
+            </View>
+          )}
 
           {/* ── COUNT PILLS ── */}
           <View style={s.pillRow}>
@@ -222,4 +288,10 @@ const s = StyleSheet.create({
   // SAVE
   saveBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 10, backgroundColor: colors.primary, marginHorizontal: 16, paddingVertical: 16, borderRadius: 16, elevation: 3 },
   saveBtnText: { color: colors.white, fontSize: 16, fontWeight: '700' },
+
+  // ASSIGN BANNER
+  assignBanner: { backgroundColor: '#3B82F6', marginHorizontal: 16, marginTop: 10, borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', elevation: 4 },
+  assignInfo: { flexDirection: 'row', alignItems: 'center', gap: 12 },
+  assignTitle: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  assignSubtitle: { color: 'rgba(255,255,255,0.8)', fontSize: 12 },
 });

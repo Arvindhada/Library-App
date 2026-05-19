@@ -11,13 +11,28 @@ export const loginWithPhone = async (phone) => {
   }
 };
 
-export const verifyOTP = async (phone, otp) => {
+export const loginWithGoogle = async (googleData) => {
   try {
-    const response = await axios.post(API_ENDPOINTS.VERIFY_OTP, { phone, otp });
+    // googleData should contain { email, name, googleId }
+    // The backend endpoint is /api/auth/google
+    const response = await axios.post(API_ENDPOINTS.LOGIN.replace('/login', '/google'), googleData);
     return response.data;
   } catch (error) {
-    console.error('OTP Verification Error:', error.response?.data || error.message);
+    console.error('Google Login Error:', error.response?.data || error.message);
     throw error.response?.data || error;
+  }
+};
+
+export const verifyOTP = async (phone, otp, role = 'student') => {
+  try {
+    const response = await axios.post(API_ENDPOINTS.VERIFY_OTP, { phone, otp, role });
+    return response.data;
+  } catch (error) {
+    const errData = error.response?.data;
+    console.error('OTP Verification Error:', errData || error.message);
+    // Throw a proper Error so .message works in catch blocks
+    const message = errData?.message || errData?.error || error.message || 'OTP verification failed';
+    throw new Error(message);
   }
 };
 

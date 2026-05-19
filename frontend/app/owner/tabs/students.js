@@ -1,16 +1,17 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, StatusBar, Linking, Modal, Alert, ActivityIndicator, Dimensions
+  TextInput, StatusBar, Linking, Modal, Alert, ActivityIndicator, Dimensions, FlatList
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { useApp } from '../../../src/context/AppContext';
-import { ownerAddStudent } from '../../../src/services/bookingService';
+import { ownerAddStudent, getBookingsByLibrary } from '../../../src/services/bookingService';
 import { API_ENDPOINTS } from '../../../src/services/apiConfig';
+import SeatBox from '../../../src/components/SeatBox';
 
 const { width } = Dimensions.get('window');
 
@@ -30,11 +31,7 @@ const C = {
   orangeBorder: '#FDDCBB',
 };
 
-const DUMMY = [
-  { _id: '1', student: { name: 'Aman Sharma',  phone: '9876543210' }, seat: '12', shift: 'Full Time', status: 'Active',  endDate: '6/10/2026', fee: 1000 },
-  { _id: '2', student: { name: 'Priya Verma',  phone: '9123456789' }, seat: '5',  shift: 'Half Time', status: 'Pending', endDate: '1/1/2026',  fee: 600  },
-  { _id: '3', student: { name: 'Rahul Joshi',  phone: '9988776655' }, seat: '18', shift: 'Full Time', status: 'Active',  endDate: '5/4/2026',  fee: 1000 },
-];
+// Removed DUMMY array
 
 const FILTERS = ['All', 'Active', 'Due', 'Expired'];
 
@@ -57,26 +54,63 @@ export default function StudentsTab() {
 
   const [search, setSearch]         = useState('');
   const [filter, setFilter]         = useState('All');
+  const params = useLocalSearchParams();
   const [addModal, setAddModal]     = useState(false);
   const [payModal, setPayModal]     = useState(false);
   const [selStudent, setSelStudent] = useState(null);
   const [saving, setSaving]         = useState(false);
-  const [form, setForm]             = useState({ name: '', phone: '', seat: '', plan: 'Full Time' });
+  const [seatPanelOpen, setSeatPanelOpen] = useState(true);
+  const [form, setForm]             = useState({ 
+    name: '', phone: '', 
+    seat: params.seat || '', 
+    plan: 'Full Day', shift: 'Morning', fee: '' 
+  });
+
+  // Handle auto-open if coming from Dashboard "Assign"
+  useEffect(() => {
+    if (params.autoAdd === 'true') {
+      setAddModal(true);
+      if (params.seat) setForm(prev => ({ ...prev, seat: params.seat }));
+    }
+  }, [params.autoAdd, params.seat]);
   const [payForm, setPayForm]       = useState({ amount: '', method: 'UPI' });
+  const [localBookings, setLocalBookings] = useState([]);
+  const [fetching, setFetching] = useState(false);
 
-  useEffect(() => { fetchDashboardData(); }, []);
+  const fetchStudents = async () => {
+    if (!currentLibrary?._id) return;
+    setFetching(true);
+    try {
+      const res = await getBookingsByLibrary(currentLibrary._id);
+      if (res.success) setLocalBookings(res.bookings);
+    } catch (e) {
+      console.log('Error fetching students:', e);
+    } finally {
+      setFetching(false);
+    }
+  };
 
-  const today = new Date();
-  const soon  = new Date(); soon.setDate(today.getDate() + 3);
+  useFocusEffect(
+    useCallback(() => {
+      if (currentLibrary?._id) {
+        fetchStudents();
+        fetchDashboardData();
+      }
+    }, [currentLibrary?._id])
+  );
+
+  const todayDate = new Date();
+  const soon  = new Date(); soon.setDate(todayDate.getDate() + 3);
 
   const rawList = useMemo(() =>
-    (currentBookings.length > 0 ? currentBookings : DUMMY).map(b => {
+    localBookings.map(b => {
       const exp = new Date(b.endDate);
-      const isDue  = exp < today;
-      const isSoon = !isDue && exp <= soon;
-      const fee = b.fee || (b.shift === 'Half Time' ? currentLibrary?.halfTime?.fee : currentLibrary?.fullTime?.fee) || 0;
-      return { ...b, student: b.student || { name: 'Student', phone: '' }, isDue, isSoon, fee };
-    }), [currentBookings, currentLibrary]);
+      const isExpired = exp < todayDate;
+      const isSoon = !isExpired && exp <= soon;
+      const isDue = isExpired || b.paymentStatus !== 'Paid';
+      const fee = b.amount || (b.shift === 'Half Time' ? currentLibrary?.half_time_fee : currentLibrary?.full_time_fee) || 0;
+      return { ...b, student: b.student || { name: 'Student', phone: '' }, isExpired, isDue, isSoon, fee };
+    }), [localBookings, currentLibrary]);
 
   const getInitials = (name) =>
     name ? name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) : 'S';
@@ -92,24 +126,65 @@ export default function StudentsTab() {
       filter === 'All'     ||
       (filter === 'Active'  && st.status === 'Active' && !st.isDue) ||
       (filter === 'Due'     && (st.status === 'Pending' || st.isDue)) ||
-      (filter === 'Expired' && st.status === 'Expired');
+      (filter === 'Expired' && st.isExpired);
     return matchSearch && matchFilter;
   }), [rawList, search, filter]);
 
   // Add student
   const handleAdd = async () => {
+    if (!currentLibrary?._id) {
+      Alert.alert('No Library', 'Please register your library first on the Dashboard.');
+      return;
+    }
     if (!form.name || !form.phone || !form.seat) {
       Alert.alert('Missing Fields', 'Please fill Name, Phone and Seat.'); return;
     }
+    if (form.phone.length !== 10) {
+      Alert.alert('Invalid Phone', 'Phone number must be exactly 10 digits.'); return;
+    }
     setSaving(true);
     try {
-      await ownerAddStudent({ name: form.name, phone: form.phone, seat: form.seat, shift: form.plan, libraryId: currentLibrary?._id });
+      await ownerAddStudent({ 
+        name: form.name, 
+        phone: form.phone, 
+        seat: form.seat, 
+        shift: form.plan === 'Half Time' ? form.shift : 'Full Day', 
+        fee: form.fee ? Number(form.fee) : 0,
+        libraryId: currentLibrary?._id 
+      });
       fetchDashboardData();
+      fetchStudents();
       setAddModal(false);
-      setForm({ name: '', phone: '', seat: '', plan: 'Full Time' });
+      setForm({ name: '', phone: '', seat: '', plan: 'Full Day', shift: 'Morning', fee: '' });
       Alert.alert('✅ Done!', 'Student added successfully.');
-    } catch (e) { Alert.alert('Error', e.message || 'Could not add student.'); }
+    } catch (e) { 
+      const msg = e.response?.data?.message || e.message || 'Could not add student.';
+      Alert.alert('Error', msg); 
+    }
     finally { setSaving(false); }
+  };
+
+  // Delete booking / remove student
+  const handleDelete = (bookingId, studentName) => {
+    Alert.alert('Remove Student', `Remove ${studentName}? Their seat will be freed.`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Remove', style: 'destructive',
+        onPress: async () => {
+          try {
+            const token = await AsyncStorage.getItem('userToken');
+            await axios.delete(`${API_ENDPOINTS.PAYMENTS}/booking/${bookingId}`, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            fetchDashboardData();
+            fetchStudents();
+            Alert.alert('Done', 'Student removed successfully.');
+          } catch (e) {
+            Alert.alert('Error', e.response?.data?.message || 'Could not remove student.');
+          }
+        }
+      }
+    ]);
   };
 
   // Collect payment
@@ -118,17 +193,19 @@ export default function StudentsTab() {
     setPayForm({ amount: String(st.fee || ''), method: 'UPI' });
     setPayModal(true);
   };
+
   const handleCollect = async () => {
     if (!payForm.amount) { Alert.alert('Error', 'Enter amount.'); return; }
     setSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
-      await axios.post(API_ENDPOINTS.PAYMENTS, {
+      await axios.post(`${API_ENDPOINTS.PAYMENTS}/collect`, {
         bookingId: selStudent._id, amount: parseInt(payForm.amount, 10), method: payForm.method,
       }, { headers: { Authorization: `Bearer ${token}` } });
       setPayModal(false);
       fetchDashboardData();
-      Alert.alert('✅ Payment Recorded!', `₹${payForm.amount} via ${payForm.method} saved.`);
+      fetchStudents();
+      Alert.alert('✅ Payment Recorded!', `₹${payForm.amount} via ${payForm.method} saved. Seat renewed.`);
     } catch (e) { Alert.alert('Error', e.response?.data?.message || e.message || 'Failed'); }
     finally { setSaving(false); }
   };
@@ -139,11 +216,58 @@ export default function StudentsTab() {
     Linking.openURL(`https://wa.me/91${phone}?text=${encodeURIComponent(msg)}`);
   };
 
+  // ── SEAT MANAGER LIVE DATA ──
+  const totalSeats = currentLibrary?.total_seats || 0;
+  const today = new Date();
+  const seatGrid = useMemo(() => {
+    const arr = [];
+    const count = totalSeats || 48;
+    for (let i = 1; i <= count; i++) {
+      const booking = localBookings.find(b => b.status === 'Active' && parseInt(b.seat, 10) === i);
+      const isFeeDue = booking ? (new Date(booking.endDate) < today || booking.paymentStatus !== 'Paid') : false;
+      arr.push({
+        number: i,
+        booked: !!booking,
+        studentName: booking?.student?.name,
+        studentPhone: booking?.student?.phone,
+        studentExpiry: booking ? new Date(booking.endDate).toLocaleDateString('en-IN') : null,
+        studentPlan: booking?.shift,
+        bookingId: booking?._id,
+        isFeeDue,
+      });
+    }
+    return arr;
+  }, [localBookings, totalSeats]);
+
+  const seatVacant = seatGrid.filter(s => !s.booked).length;
+  const seatBooked = seatGrid.filter(s => s.booked).length;
+  const seatDue    = seatGrid.filter(s => s.isFeeDue).length;
+
+  const onSeatPress = (seat) => {
+    if (seat.booked) {
+      const statusText = seat.isFeeDue
+        ? `⚠️ Fee Overdue (Expired: ${seat.studentExpiry})`
+        : `✅ Active till ${seat.studentExpiry}`;
+      Alert.alert(
+        `Seat ${seat.number} — ${seat.studentName}`,
+        `Plan: ${seat.studentPlan}\n${statusText}`,
+        [{ text: 'Close', style: 'cancel' }]
+      );
+    } else {
+      setForm(prev => ({ ...prev, seat: String(seat.number) }));
+      setAddModal(true);
+    }
+  };
+
   return (
     <View style={[s.safe, { paddingTop: insets.top }]}>
       <StatusBar barStyle="dark-content" backgroundColor={C.bg} />
 
-      <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+      <ScrollView 
+        style={s.scroll} 
+        contentContainerStyle={s.content} 
+        showsVerticalScrollIndicator={false}
+      >
 
         {/* ── HEADER ── */}
         <View style={s.header}>
@@ -156,23 +280,82 @@ export default function StudentsTab() {
           </TouchableOpacity>
         </View>
 
-        {/* ── 3 SUMMARY BOXES ── */}
-        <View style={s.summaryRow}>
-          <View style={s.sumCard}>
-            <Text style={s.sumLabel}>Total</Text>
-            <Text style={s.sumVal}>{rawList.length}</Text>
-            <Text style={s.sumSub}>Students</Text>
-          </View>
-          <View style={[s.sumCard, { backgroundColor: C.primaryLight, borderColor: C.primaryBorder }]}>
-            <Text style={[s.sumLabel, { color: '#085041' }]}>Collected</Text>
-            <Text style={[s.sumVal, { color: C.primary }]}>₹{totalCollected.toLocaleString('en-IN')}</Text>
-            <Text style={[s.sumSub, { color: C.primary }]}>This month</Text>
-          </View>
-          <View style={[s.sumCard, { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' }]}>
-            <Text style={[s.sumLabel, { color: '#991B1B' }]}>Pending</Text>
-            <Text style={[s.sumVal, { color: C.red }]}>₹{totalPending.toLocaleString('en-IN')}</Text>
-            <Text style={[s.sumSub, { color: C.red }]}>Due</Text>
-          </View>
+        {/* ── LIVE SEAT MANAGER PANEL ── */}
+        <View style={s.seatPanel}>
+          {/* Panel Header */}
+          <TouchableOpacity
+            style={s.seatPanelHeader}
+            onPress={() => setSeatPanelOpen(p => !p)}
+            activeOpacity={0.85}
+          >
+            <View style={s.seatPanelTitleRow}>
+              <View style={s.seatPanelIcon}>
+                <Ionicons name="grid-outline" size={16} color={C.primary} />
+              </View>
+              <Text style={s.seatPanelTitle}>Live Seat Manager</Text>
+              {fetching && <ActivityIndicator size="small" color={C.primary} style={{ marginLeft: 8 }} />}
+            </View>
+            <Ionicons
+              name={seatPanelOpen ? 'chevron-up' : 'chevron-down'}
+              size={18}
+              color={C.textGray}
+            />
+          </TouchableOpacity>
+
+          {seatPanelOpen && (
+            <>
+              {/* Stats Row */}
+              <View style={s.seatStats}>
+                <View style={[s.seatStatCard, { backgroundColor: '#DCFCE7', borderColor: '#86EFAC' }]}>
+                  <Text style={[s.seatStatVal, { color: '#166534' }]}>{seatVacant}</Text>
+                  <Text style={[s.seatStatLbl, { color: '#16A34A' }]}>Free</Text>
+                </View>
+                <View style={[s.seatStatCard, { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' }]}>
+                  <Text style={[s.seatStatVal, { color: C.red }]}>{seatBooked}</Text>
+                  <Text style={[s.seatStatLbl, { color: C.red }]}>Booked</Text>
+                </View>
+                <View style={[s.seatStatCard, { backgroundColor: '#FEF3C7', borderColor: '#FCD34D' }]}>
+                  <Text style={[s.seatStatVal, { color: '#92400E' }]}>{seatDue}</Text>
+                  <Text style={[s.seatStatLbl, { color: '#B45309' }]}>Fee Due</Text>
+                </View>
+              </View>
+
+              {/* Legend */}
+              <View style={s.seatLegend}>
+                <View style={s.legendItem}>
+                  <View style={[s.legendDot, { backgroundColor: '#22C55E' }]} />
+                  <Text style={s.legendTxt}>Free</Text>
+                </View>
+                <View style={s.legendItem}>
+                  <View style={[s.legendDot, { backgroundColor: '#EF4444' }]} />
+                  <Text style={s.legendTxt}>Booked</Text>
+                </View>
+                <View style={s.legendItem}>
+                  <View style={[s.legendDot, { backgroundColor: '#F59E0B' }]} />
+                  <Text style={s.legendTxt}>Due</Text>
+                </View>
+                <Text style={s.seatTotalTxt}>{seatGrid.length} seats</Text>
+              </View>
+
+              {/* Grid */}
+              <View style={s.seatGrid}>
+                <FlatList
+                  data={seatGrid}
+                  keyExtractor={(_, i) => String(i)}
+                  numColumns={8}
+                  scrollEnabled={false}
+                  renderItem={({ item }) => (
+                    <SeatBox
+                      seatNumber={item.number}
+                      isBooked={item.booked}
+                      isFeeDue={item.isFeeDue}
+                      onPress={() => onSeatPress(item)}
+                    />
+                  )}
+                />
+              </View>
+            </>
+          )}
         </View>
 
         {/* ── SEARCH ── */}
@@ -208,7 +391,12 @@ export default function StudentsTab() {
         </ScrollView>
 
         {/* ── STUDENT CARDS ── */}
-        {filtered.length === 0 ? (
+        {fetching ? (
+          <View style={s.empty}>
+            <ActivityIndicator size="large" color={C.primary} />
+            <Text style={s.emptyTxt}>Loading students...</Text>
+          </View>
+        ) : filtered.length === 0 ? (
           <View style={s.empty}>
             <Ionicons name="people-outline" size={48} color={C.border} />
             <Text style={s.emptyTxt}>No students found</Text>
@@ -229,6 +417,8 @@ export default function StudentsTab() {
                   phone: st.student?.phone || '', seat: st.seat,
                   shift: st.shift, status: st.status,
                   endDate: st.endDate || '', fee: st.fee || 0,
+                  isDue: String(st.isDue),
+                  paymentStatus: st.paymentStatus || 'Pending'
                 }
               })}
             >
@@ -267,7 +457,7 @@ export default function StudentsTab() {
               {/* Action Buttons */}
               <View style={s.actionRow}>
                 {/* Collect Fee — only for Due/Expired/Expiring */}
-                {(isDue || st.status === 'Expired' || st.isSoon) ? (
+                {(isDue || st.isExpired || st.isSoon) ? (
                   <TouchableOpacity style={s.collectBtn} onPress={() => openPay(st)} activeOpacity={0.85}>
                     <Ionicons name="cash-outline" size={14} color="#FFF" />
                     <Text style={s.collectBtnTxt}>Collect ₹{(st.fee || 0).toLocaleString('en-IN')}</Text>
@@ -275,7 +465,7 @@ export default function StudentsTab() {
                 ) : (
                   <View style={s.paidTag}>
                     <Ionicons name="checkmark-circle-outline" size={14} color="#16A34A" />
-                    <Text style={s.paidTxt}>Fee Paid</Text>
+                    <Text style={s.paidTxt}>Fee Received</Text>
                   </View>
                 )}
 
@@ -287,7 +477,7 @@ export default function StudentsTab() {
                     const phone = st.student?.phone || '';
                     const fee = st.fee || 0;
                     let msg = '';
-                    if (isDue || st.status === 'Expired') {
+                    if (isDue || st.isExpired) {
                       msg = `Hi ${name}, aapka library seat ka fee ₹${fee} due hai. Please jaldi renew karein. - Library`;
                     } else if (st.isSoon) {
                       msg = `Hi ${name}, aapka library seat 3 dino mein expire hone wala hai. Please renew karein. - Library`;
@@ -304,10 +494,9 @@ export default function StudentsTab() {
                 {/* Delete — always */}
                 <TouchableOpacity
                   style={s.delBtn}
-                  onPress={() => Alert.alert('Remove Student', 'Are you sure you want to remove this student?', [
-                    { text: 'Cancel', style: 'cancel' },
-                    { text: 'Remove', style: 'destructive', onPress: () => {} }
-                  ])}
+                  onPress={() => {
+                    handleDelete(st._id, st.student?.name || 'Student');
+                  }}
                   activeOpacity={0.8}
                 >
                   <Ionicons name="trash-outline" size={15} color={C.red} />
@@ -337,15 +526,31 @@ export default function StudentsTab() {
             <TextInput style={s.inp} placeholder="10-digit mobile" placeholderTextColor={C.textGray} keyboardType="phone-pad" maxLength={10} value={form.phone} onChangeText={v => setForm(p => ({ ...p, phone: v }))} />
             <Text style={s.lbl}>Seat Number *</Text>
             <TextInput style={s.inp} placeholder="e.g. 12 or A4" placeholderTextColor={C.textGray} value={form.seat} onChangeText={v => setForm(p => ({ ...p, seat: v }))} />
-            <Text style={s.lbl}>Shift / Plan</Text>
+            <Text style={s.lbl}>Plan *</Text>
             <View style={s.planRow}>
-              {['Full Time', 'Half Time', 'Morning', 'Evening'].map(p => (
+              {['Full Day', 'Half Time'].map(p => (
                 <TouchableOpacity key={p} style={[s.planChip, form.plan === p && s.planChipAct]} onPress={() => setForm(prev => ({ ...prev, plan: p }))}>
                   <Text style={[s.planChipTxt, form.plan === p && { color: '#FFF' }]}>{p}</Text>
                 </TouchableOpacity>
               ))}
             </View>
-            <TouchableOpacity style={s.saveBtn} onPress={handleAdd} activeOpacity={0.85} disabled={saving}>
+            {form.plan === 'Half Time' && (
+              <>
+                <Text style={s.lbl}>Shift *</Text>
+                <View style={s.planRow}>
+                  {['Morning', 'Evening'].map(sh => (
+                    <TouchableOpacity key={sh} style={[s.planChip, form.shift === sh && s.planChipAct]} onPress={() => setForm(p => ({ ...p, shift: sh }))}>
+                      <Text style={[s.planChipTxt, form.shift === sh && { color: '#FFF' }]}>{sh}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </>
+            )}
+
+            <Text style={s.lbl}>Monthly Fee (₹) *</Text>
+            <TextInput style={s.inp} placeholder="e.g. 1000" keyboardType="numeric" value={form.fee} onChangeText={v => setForm({ ...form, fee: v })} />
+
+            <TouchableOpacity style={[s.saveBtn, { marginTop: 10 }]} onPress={handleAdd} activeOpacity={0.85} disabled={saving}>
               {saving ? <ActivityIndicator color="#FFF" /> : <Text style={s.saveTxt}>Add Student</Text>}
             </TouchableOpacity>
           </View>
@@ -391,6 +596,23 @@ const s = StyleSheet.create({
   title: { color: C.textDark, fontSize: 22, fontWeight: '700' },
   subtitle: { color: C.textGray, fontSize: 13, fontWeight: '500', marginTop: 2 },
   addBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.primary, justifyContent: 'center', alignItems: 'center' },
+
+  // ── Seat Manager Panel ──
+  seatPanel: { backgroundColor: C.surface, borderRadius: 18, borderWidth: 0.5, borderColor: C.primaryBorder, marginBottom: 16, overflow: 'hidden' },
+  seatPanelHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 14 },
+  seatPanelTitleRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  seatPanelIcon: { width: 28, height: 28, borderRadius: 8, backgroundColor: C.primaryLight, justifyContent: 'center', alignItems: 'center' },
+  seatPanelTitle: { color: C.textDark, fontSize: 15, fontWeight: '700' },
+  seatStats: { flexDirection: 'row', gap: 10, paddingHorizontal: 16, marginBottom: 12 },
+  seatStatCard: { flex: 1, borderRadius: 14, borderWidth: 1, paddingVertical: 10, alignItems: 'center' },
+  seatStatVal: { fontSize: 22, fontWeight: '800' },
+  seatStatLbl: { fontSize: 11, fontWeight: '600', marginTop: 2 },
+  seatLegend: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 16, marginBottom: 10 },
+  legendItem: { flexDirection: 'row', alignItems: 'center', gap: 4 },
+  legendDot: { width: 9, height: 9, borderRadius: 4.5 },
+  legendTxt: { color: C.textGray, fontSize: 11, fontWeight: '600' },
+  seatTotalTxt: { marginLeft: 'auto', color: C.textGray, fontSize: 11, fontWeight: '600' },
+  seatGrid: { paddingHorizontal: 10, paddingBottom: 14 },
 
   // 3 Summary boxes
   summaryRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },

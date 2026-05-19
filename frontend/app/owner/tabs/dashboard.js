@@ -1,7 +1,7 @@
 import React, { useMemo, useEffect, useState } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  Dimensions, RefreshControl, Alert, StatusBar, Image, Modal, ActivityIndicator
+  Dimensions, RefreshControl, Alert, StatusBar, Image, Modal, ActivityIndicator, Platform
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -37,118 +37,96 @@ const C = {
 export default function OwnerDashboard() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { ownerData, currentLibrary, currentBookings, fetchDashboardData, loading } = useApp();
+  const { ownerData, currentLibrary, currentBookings, pendingBookings, dashboardStats, revenue, seatMap, fetchDashboardData, logout, loading } = useApp();
   const [notifModal, setNotifModal] = useState(false);
-  const [joinRequests, setJoinRequests] = useState([]);
-  const [loadReq, setLoadReq]           = useState(false);
-  const [actionId, setActionId]         = useState(null);
+  const [actionId, setActionId] = useState(null);
+  const [selectedSeat, setSelectedSeat] = useState(null);
 
-  useEffect(() => { fetchDashboardData(); fetchJoinRequests(); }, []);
+  useEffect(() => { fetchDashboardData(); }, []);
 
-  const fetchJoinRequests = async () => {
-    setLoadReq(true);
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      const res = await axios.get(`${API_ENDPOINTS.BOOKINGS}?status=Requested`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setJoinRequests(res.data?.bookings || res.data || []);
-    } catch {
-      // Dummy requests for UI demo
-      setJoinRequests([
-        { _id: 'r1', student: { name: 'Arjun Mehta', phone: '9876501234', photo: null }, seat: '7', shift: 'Morning', createdAt: new Date().toISOString() },
-        { _id: 'r2', student: { name: 'Kavya Singh', phone: '9123407890', photo: null }, seat: '14', shift: 'Evening', createdAt: new Date().toISOString() },
-      ]);
-    } finally { setLoadReq(false); }
-  };
 
-  const handleAccept = async (req) => {
-    setActionId(req._id);
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      await axios.put(`${API_ENDPOINTS.BOOKINGS}/${req._id}/accept`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setJoinRequests(prev => prev.filter(r => r._id !== req._id));
-      fetchDashboardData();
-      Alert.alert('✅ Accepted!', `${req.student?.name} ka request accept ho gaya. Ab wo aapke Students list mein hai!`);
-    } catch {
-      Alert.alert('✅ Done (Demo)', `${req.student?.name} ab aapke Students mein add ho gaya!`);
-      setJoinRequests(prev => prev.filter(r => r._id !== req._id));
-    } finally { setActionId(null); }
+
+  const handleAccept = (req) => {
+    setNotifModal(false);
+    router.push({
+      pathname: '/owner/seat-manager',
+      params: { bookingId: req._id, studentName: req.student?.name || 'Student' },
+    });
   };
 
   const handleReject = (req) => {
-    Alert.alert('Reject Request', `${req.student?.name} ki request reject karein?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Reject', style: 'destructive', onPress: async () => {
-        try {
-          const token = await AsyncStorage.getItem('userToken');
-          await axios.put(`${API_ENDPOINTS.BOOKINGS}/${req._id}/reject`, {}, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-        } catch {}
-        setJoinRequests(prev => prev.filter(r => r._id !== req._id));
-      }}
-    ]);
-  };
-
-  const handleLogout = async () => {
-    Alert.alert('Logout', 'Kya aap logout karna chahte hain?', [
+    Alert.alert('Reject Request', `Reject request from ${req.student?.name}?`, [
       { text: 'Cancel', style: 'cancel' },
       {
-        text: 'Logout', style: 'destructive',
-        onPress: async () => {
-          await AsyncStorage.removeItem('userToken');
-          await AsyncStorage.removeItem('userRole');
-          router.replace('/owner/login');
+        text: 'Reject', style: 'destructive', onPress: async () => {
+          try {
+            const token = await AsyncStorage.getItem('userToken');
+            await axios.put(`${API_ENDPOINTS.BOOKINGS}/${req._id}/status`, { status: 'Rejected' }, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+            await fetchDashboardData();
+          } catch (error) {
+            Alert.alert('Error', error.response?.data?.message || 'Failed to reject request');
+          }
         }
-      },
+      }
     ]);
   };
 
-  const activeBookings = currentBookings.filter(b => b.status === 'Active');
-  const pendingBookings = currentBookings.filter(b => b.status === 'Pending');
-  const occupiedCount = activeBookings.length;
-  const totalSeats = currentLibrary?.total_seats || 48;
-  const occupancy = totalSeats > 0 ? Math.round((occupiedCount / totalSeats) * 100) : 70;
+  const handleLogout = () => {
+    console.log('Logout button pressed');
+    const msg = 'Kya aap logout karna chahte hain?';
+    
+    if (Platform.OS === 'web') {
+      if (window.confirm(msg)) logout(router);
+    } else {
+      Alert.alert('Logout', msg, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Logout', style: 'destructive', onPress: () => logout(router) },
+      ]);
+    }
+  };
 
-  const todayRevenue = useMemo(() => {
-    return activeBookings.length * (currentLibrary?.fullTime?.fee || 0) || 1840;
-  }, [activeBookings, currentLibrary]);
+  const activeBookings = currentBookings || [];
+  const occupiedCount = dashboardStats?.occupiedSeats ?? activeBookings.length;
+  const totalSeats = dashboardStats?.totalSeats ?? currentLibrary?.total_seats ?? 48;
+  const occupancy = dashboardStats?.occupancyPercent ?? (totalSeats > 0 ? Math.round((occupiedCount / totalSeats) * 100) : 0);
+  const duePaymentsCount = dashboardStats?.duePayments ?? 0;
+
+  // Revenue from new API — real figures from DB
+  const todayRevenue = useMemo(() => revenue?.today || 0, [revenue]);
+  const monthlyRevenue = useMemo(() => revenue?.thisMonth || 0, [revenue]);
 
   const getInitials = (name) =>
     name ? name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) : 'S';
 
-  // Seat map - show all seats (max 48 for display), numbered 1, 2, 3...
-  const seatsToShow = Math.min(totalSeats, 48);
+  // Seat map — use seatMap from context (comes from backend)
+  // seatMap: { "1": { name, phone, shift, endDate, paymentStatus }, "5": {...} }
+  const seatsToShow = totalSeats;
   const seatGrid = Array.from({ length: seatsToShow }, (_, i) => {
     const num = i + 1;
-    const isOcc = activeBookings.some(b => String(b.seat) === String(num));
-    const isExp = pendingBookings.some(b => String(b.seat) === String(num));
-    // Fallback pattern when no real data
-    const fallbackOcc = !currentBookings.length && num % 3 !== 0 && num !== 5 && num !== 16;
-    const fallbackExp = !currentBookings.length && (num === 5 || num === 16);
+    const seatData = seatMap?.[String(num)];
+    const isOcc = !!seatData;
+    const isExp = seatData?.status === 'exp'; // Optional future flag
+    
     return {
       num,
-      label: String(num),  // Simple number: 1, 2, 3...
-      status: isExp || fallbackExp ? 'exp' : (isOcc || fallbackOcc) ? 'occ' : 'free'
+      label: String(num),
+      status: isOcc ? 'occ' : 'free',
+      booking: seatData || null
     };
   });
 
-  const dummyStudents = {
-    active: [
-      { _id: 'd1', student: { name: 'Ravi Agarwal' }, seat: 'A4', shift: 'Evening' },
-      { _id: 'd2', student: { name: 'Aman Sharma' }, seat: 'C2', shift: 'Morning' },
-      { _id: 'd3', student: { name: 'Priya Verma' }, seat: 'D6', shift: 'Full Time' },
-    ],
-    pending: [
-      { _id: 'p1', student: { name: 'Priya Sharma' }, seat: 'B5', shift: 'Evening' },
-    ]
-  };
+  const displayActive = activeBookings.length > 0 ? activeBookings.slice(0, 3) : [];
+  const displayPending = pendingBookings.length > 0 ? pendingBookings.slice(0, 1) : [];
 
-  const displayActive = activeBookings.length > 0 ? activeBookings.slice(0, 3) : dummyStudents.active;
-  const displayPending = pendingBookings.length > 0 ? pendingBookings.slice(0, 1) : dummyStudents.pending;
+  // Dynamic Greeting based on time
+  const greetingText = useMemo(() => {
+    const hour = new Date().getHours();
+    if (hour < 12) return 'Good morning';
+    if (hour < 17) return 'Good afternoon';
+    return 'Good evening';
+  }, []);
 
   return (
     <View style={[s.safe, { paddingTop: insets.top }]}>
@@ -161,6 +139,25 @@ export default function OwnerDashboard() {
           <RefreshControl refreshing={loading} onRefresh={fetchDashboardData} tintColor={C.primary} />
         }
       >
+
+        {/* ── EMPTY STATE: NO LIBRARY ── */}
+        {!currentLibrary && !loading && (
+          <View style={s.regCard}>
+            <View style={s.regIcon}>
+              <Ionicons name="business" size={30} color={C.primary} />
+            </View>
+            <View style={{ flex: 1, marginLeft: 15 }}>
+              <Text style={s.regTitle}>Register Your Library</Text>
+              <Text style={s.regSub}>Manage students, fees, and seats in one place.</Text>
+            </View>
+            <TouchableOpacity 
+              style={s.regBtn} 
+              onPress={() => router.push('/owner/add-library')}
+            >
+              <Text style={s.regBtnTxt}>Start</Text>
+            </TouchableOpacity>
+          </View>
+        )}
 
         {/* ── HEADER ── */}
         <View style={s.header}>
@@ -177,34 +174,46 @@ export default function OwnerDashboard() {
               <View style={s.onlineDot} />
             </View>
             <View style={s.headerText}>
-              <Text style={s.greeting}>Good morning, {ownerData?.name?.split(' ')[0] || 'Ramesh'} 👋</Text>
-              <Text style={s.libName} numberOfLines={1}>{currentLibrary?.name || 'Gyan Deep Library'}</Text>
+              <Text style={s.greeting}>{greetingText}, {ownerData?.name?.split(' ')[0] || 'Owner'} 👋</Text>
+              <Text style={s.libName} numberOfLines={1}>{currentLibrary?.name || 'Welcome to LibraryWala'}</Text>
             </View>
           </View>
-          {/* Right: Bell icon */}
-          <TouchableOpacity
-            style={s.bellBtn}
-            onPress={() => { setNotifModal(true); fetchJoinRequests(); }}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="notifications-outline" size={20} color={C.primary} />
-            {joinRequests.length > 0 && (
-              <View style={s.bellDot}>
-                <Text style={{ color: '#FFF', fontSize: 8, fontWeight: '800' }}>
-                  {joinRequests.length > 9 ? '9+' : joinRequests.length}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
+          {/* Right: Bell + Logout */}
+          <View style={{ flexDirection: 'row', gap: 10 }}>
+            <TouchableOpacity
+              style={s.bellBtn}
+              onPress={() => router.push('/owner/notifications')}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="notifications-outline" size={20} color={C.primary} />
+              {pendingBookings.length > 0 && (
+                <View style={s.bellDot}>
+                  <Text style={{ color: '#FFF', fontSize: 8, fontWeight: '800' }}>
+                    {pendingBookings.length > 9 ? '9+' : pendingBookings.length}
+                  </Text>
+                </View>
+              )}
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={[s.bellBtn, { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' }]}
+              onPress={handleLogout}
+              activeOpacity={0.8}
+            >
+              <Ionicons name="log-out-outline" size={20} color={C.red} />
+            </TouchableOpacity>
+          </View>
         </View>
 
-        {/* ── 2×2 STATS GRID ── */}
-        <View style={s.gridRow}>
+        {currentLibrary && (
+          <>
+            {/* ── 2×2 STATS GRID ── */}
+            <View style={s.gridRow}>
           {/* Revenue - Highlighted */}
           <View style={[s.card, s.cardHL]}>
-            <Text style={s.cardLabelHL}>Today's Revenue</Text>
+            <Text style={s.cardLabelHL}>Today&apos;s Revenue</Text>
             <Text style={s.cardValHL}>₹{todayRevenue.toLocaleString('en-IN')}</Text>
-            <Text style={s.cardSubGreen}>↑ 12% vs yesterday</Text>
+            <Text style={s.cardSubGreen}>This Month: ₹{monthlyRevenue.toLocaleString('en-IN')}</Text>
           </View>
           {/* Seats */}
           <View style={s.card}>
@@ -219,14 +228,14 @@ export default function OwnerDashboard() {
           {/* Due */}
           <View style={s.card}>
             <Text style={s.cardLabel}>Due Payments</Text>
-            <Text style={[s.cardVal, { color: C.red }]}>{pendingBookings.length || 3}</Text>
+            <Text style={[s.cardVal, { color: C.red }]}>{duePaymentsCount}</Text>
             <Text style={[s.cardSubTeal, { color: C.red }]}>Action Required</Text>
           </View>
-          {/* Inquiries */}
+          {/* Expiring Soon */}
           <View style={s.card}>
-            <Text style={s.cardLabel}>New Inquiries</Text>
-            <Text style={s.cardVal}>7</Text>
-            <Text style={s.cardSubTeal}>via LibConnect</Text>
+            <Text style={s.cardLabel}>Expiring Soon</Text>
+            <Text style={[s.cardVal, { color: C.orange }]}>{dashboardStats?.expiringSoon ?? 0}</Text>
+            <Text style={[s.cardSubTeal, { color: C.orange }]}>In next 5 days</Text>
           </View>
         </View>
 
@@ -243,14 +252,19 @@ export default function OwnerDashboard() {
             {seatGrid.map((seat) => {
               const bg =
                 seat.status === 'occ' ? s.sOcc :
-                seat.status === 'exp' ? s.sExp : s.sFree;
+                  seat.status === 'exp' ? s.sExp : s.sFree;
               const tc =
                 seat.status === 'occ' ? '#FFF' :
-                seat.status === 'exp' ? C.orange : C.primary;
+                  seat.status === 'exp' ? C.orange : C.primary;
               return (
-                <View key={seat.num} style={[s.seat, bg]}>
+                <TouchableOpacity 
+                  key={seat.num} 
+                  style={[s.seat, bg]} 
+                  activeOpacity={0.7}
+                  onPress={() => setSelectedSeat(seat)}
+                >
                   <Text style={[s.seatTxt, { color: tc }]}>{seat.label}</Text>
-                </View>
+                </TouchableOpacity>
               );
             })}
           </View>
@@ -274,7 +288,7 @@ export default function OwnerDashboard() {
 
         {/* ── AAJ KE STUDENTS ── */}
         <View style={s.secHeader}>
-          <Text style={s.secTitle}>Today's Students</Text>
+          <Text style={s.secTitle}>Today&apos;s Students</Text>
           <TouchableOpacity onPress={() => router.push('/owner/manage-students')}>
             <Text style={s.secLink}>View All →</Text>
           </TouchableOpacity>
@@ -304,7 +318,7 @@ export default function OwnerDashboard() {
             </View>
             <View style={{ flex: 1 }}>
               <Text style={s.stName}>{st.student?.name}</Text>
-              <Text style={s.stMeta}>Seat {st.seat} · {st.shift} · 3 May</Text>
+              <Text style={s.stMeta}>Seat {st.seat} · {st.shift} · Ends {new Date(st.endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' })}</Text>
             </View>
             <View style={[s.chip, { backgroundColor: C.chip.green.bg, borderColor: C.chip.green.border }]}>
               <Text style={[s.chipTxt, { color: C.chip.green.text }]}>Active</Text>
@@ -312,7 +326,16 @@ export default function OwnerDashboard() {
           </View>
         ))}
 
-        <View style={{ height: 90 }} />
+            {displayActive.length === 0 && displayPending.length === 0 && (
+              <View style={{ padding: 20, alignItems: 'center', backgroundColor: C.surface, borderRadius: 16, borderWidth: 0.5, borderColor: C.border }}>
+                <Ionicons name="people-outline" size={32} color={C.textGray} />
+                <Text style={{ color: C.textGray, marginTop: 10, fontSize: 14 }}>No students assigned yet.</Text>
+              </View>
+            )}
+
+            <View style={{ height: 90 }} />
+          </>
+        )}
       </ScrollView>
 
       {/* ── NOTIFICATION MODAL ── */}
@@ -330,12 +353,12 @@ export default function OwnerDashboard() {
               </TouchableOpacity>
             </View>
 
-            {loadReq ? (
+            {loading ? (
               <View style={{ padding: 40, alignItems: 'center' }}>
                 <ActivityIndicator color={C.primary} size="large" />
                 <Text style={{ color: C.textGray, marginTop: 10 }}>Loading requests...</Text>
               </View>
-            ) : joinRequests.length === 0 ? (
+            ) : pendingBookings.length === 0 ? (
               <View style={{ padding: 50, alignItems: 'center', gap: 12 }}>
                 <Ionicons name="checkmark-circle-outline" size={48} color={C.primaryBorder} />
                 <Text style={{ color: C.textGray, fontSize: 15, fontWeight: '500' }}>
@@ -344,7 +367,7 @@ export default function OwnerDashboard() {
               </View>
             ) : (
               <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
-                {joinRequests.map(req => {
+                {pendingBookings.map(req => {
                   const initials = req.student?.name
                     ? req.student.name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
                     : 'S';
@@ -397,6 +420,95 @@ export default function OwnerDashboard() {
           </View>
         </View>
       </Modal>
+
+      {/* ── SEAT DETAILS MODAL ── */}
+      <Modal visible={!!selectedSeat} transparent animationType="fade" onRequestClose={() => setSelectedSeat(null)}>
+        <TouchableOpacity style={s.seatModalOverlay} activeOpacity={1} onPress={() => setSelectedSeat(null)}>
+          <TouchableOpacity activeOpacity={1} style={s.seatModalCard}>
+
+            {/* Colored Header */}
+            <View style={[
+              s.seatModalHeader,
+              { backgroundColor: selectedSeat?.status === 'occ' ? C.primary : selectedSeat?.status === 'exp' ? C.orange : C.green }
+            ]}>
+              <View style={s.seatModalBadge}>
+                <Text style={s.seatModalBadgeTxt}>{selectedSeat?.label}</Text>
+              </View>
+              <Text style={s.seatModalTitle}>Seat {selectedSeat?.label}</Text>
+              <Text style={s.seatModalSub}>
+                {selectedSeat?.status === 'occ' ? '🔴 Occupied' : selectedSeat?.status === 'exp' ? '⚠️ Fee Overdue' : '🟢 Available'}
+              </Text>
+            </View>
+
+            {/* Body */}
+            <View style={s.seatModalBody}>
+              {selectedSeat?.booking ? (
+                <>
+                  {/* Student Info Row */}
+                  <View style={s.seatModalStudentRow}>
+                    <View style={s.seatModalAvatar}>
+                      <Text style={s.seatModalAvatarTxt}>{getInitials(selectedSeat.booking.name)}</Text>
+                    </View>
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.seatModalName}>{selectedSeat.booking.name || 'Unknown Student'}</Text>
+                      <Text style={s.seatModalPhone}>
+                        <Ionicons name="call-outline" size={13} color={C.primary} /> +91 {(selectedSeat.booking.phone || 'N/A').replace('+91','')}
+                      </Text>
+                    </View>
+                  </View>
+
+                  {/* Details */}
+                  <View style={s.seatModalInfoBox}>
+                    <View style={s.seatModalInfoRow}>
+                      <Text style={s.seatModalInfoLabel}>Shift</Text>
+                      <Text style={s.seatModalInfoValue}>{selectedSeat.booking.shift || 'Full Day'}</Text>
+                    </View>
+                    <View style={s.seatModalDivider} />
+                    <View style={s.seatModalInfoRow}>
+                      <Text style={s.seatModalInfoLabel}>Ends On</Text>
+                      <Text style={[s.seatModalInfoValue, { color: selectedSeat?.status === 'exp' ? C.red : C.green }]}>
+                        {selectedSeat.booking.endDate
+                          ? new Date(selectedSeat.booking.endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' })
+                          : 'N/A'}
+                      </Text>
+                    </View>
+                  </View>
+                </>
+              ) : (
+                <View style={s.seatModalEmptyState}>
+                  <Ionicons name="bed-outline" size={52} color={C.primaryBorder} />
+                  <Text style={s.seatModalEmptyTxt}>Seat is vacant and ready to assign</Text>
+                </View>
+              )}
+
+              {/* Action Buttons */}
+              <View style={s.seatModalBtns}>
+                <TouchableOpacity style={s.seatModalCloseBtn} onPress={() => setSelectedSeat(null)}>
+                  <Text style={s.seatModalCloseTxt}>Close</Text>
+                </TouchableOpacity>
+                {selectedSeat?.status !== 'free' ? (
+                  <TouchableOpacity
+                    style={s.seatModalManageBtn}
+                    onPress={() => { setSelectedSeat(null); router.push('/owner/tabs/students'); }}
+                  >
+                    <Ionicons name="people-outline" size={16} color="#FFF" />
+                    <Text style={s.seatModalManageTxt}>Manage</Text>
+                  </TouchableOpacity>
+                ) : (
+                  <TouchableOpacity
+                    style={s.seatModalManageBtn}
+                    onPress={() => { setSelectedSeat(null); router.push({ pathname: '/owner/tabs/students', params: { autoAdd: 'true', seat: selectedSeat?.label } }); }}
+                  >
+                    <Ionicons name="person-add-outline" size={16} color="#FFF" />
+                    <Text style={s.seatModalManageTxt}>Assign</Text>
+                  </TouchableOpacity>
+                )}
+              </View>
+            </View>
+          </TouchableOpacity>
+        </TouchableOpacity>
+      </Modal>
+
     </View>
   );
 }
@@ -548,4 +660,103 @@ const s = StyleSheet.create({
     borderRadius: 8, borderWidth: 0.5, paddingHorizontal: 10, paddingVertical: 5,
   },
   chipTxt: { fontSize: 11, fontWeight: '700' },
+  // Registration Card
+  regCard: {
+    backgroundColor: C.surface, borderRadius: 20, padding: 20,
+    flexDirection: 'row', alignItems: 'center', marginBottom: 20,
+    borderWidth: 1, borderColor: C.primaryBorder,
+    shadowColor: C.primary, shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.1, shadowRadius: 10, elevation: 3,
+  },
+  regIcon: {
+    width: 60, height: 60, borderRadius: 15,
+    backgroundColor: C.primaryLight, justifyContent: 'center', alignItems: 'center',
+  },
+  regTitle: { fontSize: 18, fontWeight: '700', color: C.textDark },
+  regSub: { fontSize: 13, color: C.textGray, marginTop: 4 },
+  regBtn: {
+    backgroundColor: C.primary, paddingHorizontal: 20, paddingVertical: 10,
+    borderRadius: 12, marginLeft: 10,
+  },
+  regBtnTxt: { color: '#FFF', fontWeight: '700', fontSize: 14 },
+
+  // ── SEAT DETAIL MODAL ──
+  seatModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0,0,0,0.55)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 20,
+  },
+  seatModalCard: {
+    width: '100%',
+    maxWidth: 400,
+    backgroundColor: C.surface,
+    borderRadius: 24,
+    overflow: 'hidden',
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 10 },
+    shadowOpacity: 0.25,
+    shadowRadius: 20,
+    elevation: 12,
+  },
+  seatModalHeader: {
+    paddingTop: 28, paddingBottom: 22,
+    alignItems: 'center',
+    gap: 6,
+  },
+  seatModalBadge: {
+    width: 52, height: 52, borderRadius: 26,
+    backgroundColor: 'rgba(255,255,255,0.25)',
+    justifyContent: 'center', alignItems: 'center',
+    marginBottom: 6,
+  },
+  seatModalBadgeTxt: { fontSize: 22, fontWeight: '900', color: '#FFF' },
+  seatModalTitle: { fontSize: 20, fontWeight: '800', color: '#FFF' },
+  seatModalSub: { fontSize: 13, color: 'rgba(255,255,255,0.85)', fontWeight: '500' },
+
+  seatModalBody: { padding: 20 },
+
+  seatModalStudentRow: {
+    flexDirection: 'row', alignItems: 'center', gap: 14,
+    marginBottom: 16,
+  },
+  seatModalAvatar: {
+    width: 52, height: 52, borderRadius: 26,
+    backgroundColor: C.primaryLight, borderWidth: 2, borderColor: C.primaryBorder,
+    justifyContent: 'center', alignItems: 'center',
+  },
+  seatModalAvatarTxt: { fontSize: 18, fontWeight: '800', color: C.primary },
+  seatModalName: { fontSize: 17, fontWeight: '700', color: C.textDark, marginBottom: 3 },
+  seatModalPhone: { fontSize: 13, color: C.primary, fontWeight: '500' },
+
+  seatModalInfoBox: {
+    backgroundColor: C.bg, borderRadius: 14,
+    borderWidth: 0.5, borderColor: C.border,
+    paddingHorizontal: 16, marginBottom: 20,
+  },
+  seatModalInfoRow: {
+    flexDirection: 'row', justifyContent: 'space-between',
+    alignItems: 'center', paddingVertical: 13,
+  },
+  seatModalDivider: { height: 0.5, backgroundColor: C.border },
+  seatModalInfoLabel: { fontSize: 14, color: C.textGray, fontWeight: '500' },
+  seatModalInfoValue: { fontSize: 14, color: C.textDark, fontWeight: '700' },
+
+  seatModalEmptyState: { alignItems: 'center', paddingVertical: 24, gap: 10, marginBottom: 16 },
+  seatModalEmptyTxt: { fontSize: 15, color: C.textGray, textAlign: 'center', fontWeight: '500' },
+
+  seatModalBtns: { flexDirection: 'row', gap: 10 },
+  seatModalCloseBtn: {
+    flex: 1, paddingVertical: 14, borderRadius: 14,
+    backgroundColor: C.primaryLight, alignItems: 'center',
+    borderWidth: 0.5, borderColor: C.primaryBorder,
+  },
+  seatModalCloseTxt: { color: C.primary, fontWeight: '700', fontSize: 15 },
+  seatModalManageBtn: {
+    flex: 1, paddingVertical: 14, borderRadius: 14,
+    backgroundColor: C.primary, alignItems: 'center',
+    flexDirection: 'row', justifyContent: 'center', gap: 8,
+  },
+  seatModalManageTxt: { color: '#FFF', fontWeight: '700', fontSize: 15 },
 });

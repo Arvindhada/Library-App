@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  StatusBar, Linking, Alert, ActivityIndicator, Modal
+  StatusBar, Linking, Alert, ActivityIndicator, Modal, TextInput
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -74,36 +74,52 @@ export default function StudentProfile() {
     }
   };
 
-  // Collect / Renew payment
+  // Collect / Renew payment — uses /api/payments/collect
   const handleCollect = async () => {
     if (!payForm.amount) { Alert.alert('Error', 'Please enter amount'); return; }
     setSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
-      await axios.post(API_ENDPOINTS.PAYMENTS, {
+      const res = await axios.post(`${API_ENDPOINTS.PAYMENTS}/collect`, {
         bookingId: student._id,
         amount:    parseInt(payForm.amount, 10),
         method:    payForm.method,
       }, { headers: { Authorization: `Bearer ${token}` } });
 
       setPayModal(false);
-      Alert.alert('✅ Payment Recorded!', `₹${payForm.amount} via ${payForm.method} saved.\nSeat renewed for 30 days.`);
-      fetchPayments(); // Refresh history
+      Alert.alert('✅ Payment Recorded!', res.data?.message || `₹${payForm.amount} saved. Seat renewed for 30 days.`);
+      fetchPayments();
     } catch (e) {
-      // Show in history even if API fails (offline mode)
-      const newPay = {
-        _id: Date.now().toString(),
-        amount: parseInt(payForm.amount, 10),
-        method: payForm.method,
-        date: new Date().toISOString(),
-        status: 'Paid',
-      };
-      setPayments(prev => [newPay, ...prev]);
-      setPayModal(false);
-      Alert.alert('✅ Saved Locally', `₹${payForm.amount} recorded. Will sync when connected.`);
+      Alert.alert('Error', e.response?.data?.message || 'Could not record payment.');
     } finally {
       setSaving(false);
     }
+  };
+
+  // Remove student — DELETE booking from backend
+  const handleRemove = () => {
+    Alert.alert(
+      'Remove Student',
+      `Are you sure you want to remove ${student.name}? Their seat will be freed.`,
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Remove', style: 'destructive',
+          onPress: async () => {
+            try {
+              const token = await AsyncStorage.getItem('userToken');
+              await axios.delete(`${API_ENDPOINTS.PAYMENTS}/booking/${student._id}`, {
+                headers: { Authorization: `Bearer ${token}` }
+              });
+              Alert.alert('Done', 'Student removed successfully.');
+              router.back();
+            } catch (e) {
+              Alert.alert('Error', e.response?.data?.message || 'Could not remove student.');
+            }
+          }
+        }
+      ]
+    );
   };
 
   const totalPaid = payments.reduce((acc, p) => acc + (p.amount || 0), 0);
@@ -117,7 +133,7 @@ export default function StudentProfile() {
     } catch { return d; }
   };
 
-  const isDue = student.status === 'Pending' || (student.endDate && new Date(student.endDate) < new Date());
+  const isDue = params.isDue === 'true' || params.paymentStatus === 'Pending' || (student.endDate && new Date(student.endDate) < new Date());
 
   const chipStyle = () => {
     if (isDue)                       return { bg: '#FEE2E2', border: '#FCA5A5', text: C.red,    label: 'Fee Due' };
@@ -222,6 +238,9 @@ export default function StudentProfile() {
           >
             <Ionicons name="logo-whatsapp" size={18} color="#16A34A" />
           </TouchableOpacity>
+          <TouchableOpacity style={s.delBtn} onPress={handleRemove} activeOpacity={0.8}>
+            <Ionicons name="trash-outline" size={18} color={C.red} />
+          </TouchableOpacity>
         </View>
 
         {/* ── PAYMENT HISTORY ── */}
@@ -285,6 +304,15 @@ export default function StudentProfile() {
             </View>
 
             <Text style={s.lbl}>Amount (₹)</Text>
+            <TextInput 
+              style={s.inp} 
+              placeholder="Enter amount" 
+              placeholderTextColor={C.textGray} 
+              keyboardType="numeric" 
+              value={payForm.amount} 
+              onChangeText={v => setPayForm(p => ({ ...p, amount: v }))} 
+            />
+            
             <View style={s.amtRow}>
               {[student.fee, Math.round(student.fee * 3), Math.round(student.fee * 6)].map(amt => (
                 <TouchableOpacity
@@ -403,6 +431,11 @@ const s = StyleSheet.create({
     backgroundColor: '#DCFCE7', borderWidth: 0.5, borderColor: '#86EFAC',
     justifyContent: 'center', alignItems: 'center',
   },
+  delBtn: {
+    width: 50, height: 50, borderRadius: 14,
+    backgroundColor: '#FEE2E2', borderWidth: 0.5, borderColor: '#FCA5A5',
+    justifyContent: 'center', alignItems: 'center',
+  },
 
   // Section
   secHeader: { marginBottom: 12 },
@@ -433,6 +466,7 @@ const s = StyleSheet.create({
   modalSub: { color: C.textGray, fontSize: 13, marginTop: 2 },
 
   lbl: { color: C.textGray, fontSize: 13, fontWeight: '600', marginBottom: 8, marginTop: 4 },
+  inp: { backgroundColor: C.bg, borderRadius: 12, borderWidth: 0.5, borderColor: C.border, paddingHorizontal: 14, paddingVertical: 13, fontSize: 15, color: C.textDark, marginBottom: 10 },
   amtRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },
   amtChip: { flex: 1, paddingVertical: 11, borderRadius: 12, borderWidth: 0.5, borderColor: C.border, backgroundColor: C.bg, alignItems: 'center' },
   amtChipActive: { backgroundColor: C.primary, borderColor: C.primary },

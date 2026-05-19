@@ -18,10 +18,10 @@ const theme = {
   inputBorder: '#1D7151'
 };
 
-export default function OwnerOTP() {
+export default function StudentOTP() {
   const router = useRouter();
   const { phone } = useLocalSearchParams();
-  const { fetchDashboardData, setUserRole } = useApp();
+  const { setStudentData, setUserRole } = useApp();
   const [otp, setOtp] = useState(['', '', '', '']);
   const [timer, setTimer] = useState(30);
   const [loading, setLoading] = useState(false);
@@ -45,25 +45,25 @@ export default function OwnerOTP() {
     
     setLoading(true);
     try {
-      // Call real backend API with 'owner' role
-      const data = await verifyOTP(phone, code, 'owner');
+      const data = await verifyOTP(phone, code, 'student');
       
-      // Save Token and Role
       await AsyncStorage.setItem('userToken', data.token);
       await AsyncStorage.setItem('userRole', data.role);
       
-      // Update Context State
       setUserRole(data.role);
+      setStudentData(data.user);
       
-      // Fetch dashboard data immediately so context is populated
-      await fetchDashboardData();
-      
+      // Navigate based on profile completeness
+      if (data.user && data.user.name && data.user.name.trim() !== '') {
+        router.replace('/student/tabs');
+      } else {
+        router.replace('/student/onboarding');
+      }
       setLoading(false);
-      router.replace('/owner/tabs');
       
     } catch (error) {
       setLoading(false);
-      const errMsg = error?.message || error?.error || 'Invalid OTP. Please try again.';
+      const errMsg = error?.message || 'Invalid OTP. Please try again.';
       Alert.alert('Verification Failed', errMsg);
     }
   };
@@ -77,7 +77,7 @@ export default function OwnerOTP() {
         </TouchableOpacity>
 
         <View style={s.logoBox}>
-          <Ionicons name="shield-checkmark" size={30} color="#fff" />
+          <Ionicons name="school" size={30} color="#fff" />
         </View>
 
         <Text style={s.heading}>OTP Verification</Text>
@@ -123,21 +123,15 @@ const s = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: theme.bg },
   container: { flex: 1, paddingHorizontal: 22, paddingTop: 40, alignItems: 'center' },
   back: { alignSelf: 'flex-start', padding: 4, marginBottom: 20 },
-  
   logoBox: { width: 64, height: 64, backgroundColor: theme.primaryOr, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-  
   heading: { fontSize: 26, fontWeight: '800', color: theme.textDark, letterSpacing: -0.4, marginBottom: 8 },
   sub: { fontSize: 14, color: theme.textMu, textAlign: 'center', marginBottom: 32 },
-  
   inputContainer: { width: '100%', marginBottom: 12 },
   label: { fontSize: 13, color: theme.textDark, fontWeight: '600', marginBottom: 10, textAlign: 'center' },
-  
   otpRow: { flexDirection: 'row', justifyContent: 'center', gap: 12, marginBottom: 8 },
   otpBox: { width: 56, height: 64, borderRadius: 16, borderWidth: 1, borderColor: theme.cardBorder, textAlign: 'center', fontSize: 24, fontWeight: '700', color: theme.textDark, backgroundColor: theme.cardBg },
   otpFilled: { borderColor: theme.primaryOr, backgroundColor: theme.inputBg },
-  
   resendText: { fontSize: 13, color: theme.textMu, marginBottom: 32, fontWeight: '500' },
-  
   btn: { width: '100%', backgroundColor: theme.primaryOr, paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginBottom: 16, shadowColor: theme.primaryOr, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 4 },
   btnText: { color: theme.textWh, fontSize: 16, fontWeight: '700' }
 });

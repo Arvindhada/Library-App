@@ -15,7 +15,7 @@ export default function SplashScreen() {
   };
   const handleStudent = () => {
     setUserRole('student');
-    router.push('/student/onboarding');
+    router.push('/student/login');
   };
 
   return (

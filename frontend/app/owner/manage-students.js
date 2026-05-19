@@ -3,7 +3,7 @@ import { View, Text, StyleSheet, ScrollView, TouchableOpacity, FlatList, TextInp
 import { useRouter } from 'expo-router';
 import { Ionicons, FontAwesome } from '@expo/vector-icons';
 import { useApp } from '../../src/context/AppContext';
-import { sendFeeReminder } from '../../src/services/whatsapp';
+import { sendFeeReminder, openWhatsApp } from '../../src/services/whatsapp';
 import { ownerAddStudent, updateBookingStatus } from '../../src/services/bookingService';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
@@ -101,7 +101,7 @@ export default function ManageStudents() {
       { text: 'Cancel', style: 'cancel' },
       { text: 'Remove', style: 'destructive', onPress: async () => {
         try {
-          await updateBookingStatus(bookingId, 'Cancelled');
+          await updateBookingStatus(bookingId, 'Rejected');
           fetchDashboardData();
         } catch (error) {
           Alert.alert('Error', 'Could not remove student');
@@ -131,7 +131,7 @@ export default function ManageStudents() {
     setPaymentSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
-      await axios.post(API_ENDPOINTS.PAYMENTS, {
+      await axios.post(`${API_ENDPOINTS.PAYMENTS}/collect`, {
         bookingId: selectedStudent._id,
         amount: parseInt(paymentForm.amount, 10),
         method: paymentForm.method,
@@ -292,6 +292,11 @@ export default function ManageStudents() {
               <Text style={s.remindTextSmall}>Remind</Text>
             </TouchableOpacity>
           )}
+
+          <TouchableOpacity style={[s.iconBtn, { backgroundColor: '#E8F5E9' }]} onPress={() => openWhatsApp(item.phone, currentLibrary?.name)}>
+            <FontAwesome name="whatsapp" size={18} color="#10B981" />
+          </TouchableOpacity>
+
 
           <View style={s.rightActions}>
             <TouchableOpacity onPress={() => confirmDelete(item._id)} style={[s.iconBtn, { backgroundColor: '#FEE2E2' }]}>

@@ -2,12 +2,9 @@ import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ScrollView, Alert, SafeAreaView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
-import { loginWithPhone, loginWithGoogle } from '../../src/services/authService';
-import * as WebBrowser from 'expo-web-browser';
-import * as Google from 'expo-auth-session/providers/google';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-
-WebBrowser.maybeCompleteAuthSession();
+import axios from 'axios';
+import { API_ENDPOINTS } from '../../src/services/apiConfig';
 
 const theme = {
   bg: '#FDFDFD',
@@ -20,83 +17,38 @@ const theme = {
   inputBg: '#F3F4F6',
 };
 
-export default function OwnerLogin() {
+export default function StudentLogin() {
   const router = useRouter();
   const [phone, setPhone] = useState('');
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
 
-  // Load saved phone number on mount
   useEffect(() => {
     const loadPhone = async () => {
-      const savedPhone = await AsyncStorage.getItem('lastOwnerPhone');
+      const savedPhone = await AsyncStorage.getItem('lastStudentPhone');
       if (savedPhone) setPhone(savedPhone);
     };
     loadPhone();
   }, []);
 
-  // ── Google Auth Setup ──
-  // TODO: Replace with your actual Google Client IDs from Google Cloud Console
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    webClientId: '295342567611-0cev9au3uvpjglabe15bam5qgedp9so7.apps.googleusercontent.com',
-    iosClientId: 'YOUR_IOS_CLIENT_ID_HERE.apps.googleusercontent.com',
-    androidClientId: 'YOUR_ANDROID_CLIENT_ID_HERE.apps.googleusercontent.com',
-  });
-
-  useEffect(() => {
-    if (response?.type === 'success') {
-      const { authentication } = response;
-      fetchGoogleUserInfo(authentication.accessToken);
-    } else if (response?.type === 'error') {
-      Alert.alert('Google Login', 'Login cancelled or failed.');
-    }
-  }, [response]);
-
-  const fetchGoogleUserInfo = async (token) => {
-    setLoading(true);
-    try {
-      // Get user details from Google
-      const res = await fetch('https://www.googleapis.com/userinfo/v2/me', {
-        headers: { Authorization: `Bearer ${token}` },
-      });
-      const user = await res.json();
-      
-      // Send user details to our backend
-      const backendResponse = await loginWithGoogle({
-        email: user.email,
-        name: user.name,
-        googleId: user.id
-      });
-      
-      // Save Token and proceed
-      await AsyncStorage.setItem('userToken', backendResponse.token);
-      await AsyncStorage.setItem('userRole', backendResponse.role);
-      
-      setLoading(false);
-      router.replace('/owner/tabs');
-    } catch (error) {
-      setLoading(false);
-      Alert.alert('Google Login Failed', error.message || 'Something went wrong');
-    }
-  };
-
   const sendOtp = async () => {
-    if (phone.length !== 10) { 
-      Alert.alert('Error', 'Enter valid 10-digit number'); 
-      return; 
-    }
+    const phoneRegex = /^[0-9]{10}$/;
+    if (!phone.trim()) { Alert.alert('Error', 'Mobile number is required'); return; }
+    if (!phoneRegex.test(phone.trim())) { Alert.alert('Error', 'Enter valid 10-digit number'); return; }
     
     setLoading(true);
     setErrorMsg('');
     try {
-      await loginWithPhone(phone);
-      // Save phone number to remember it for next time
-      await AsyncStorage.setItem('lastOwnerPhone', phone);
-      setLoading(false);
-      router.push({ pathname: '/owner/otp', params: { phone } });
+      const formattedPhone = `+91${phone.trim()}`;
+      const res = await axios.post(API_ENDPOINTS.LOGIN, { phone: formattedPhone });
+      if (res.data?.success) {
+        await AsyncStorage.setItem('lastStudentPhone', phone);
+        setLoading(false);
+        router.push({ pathname: '/student/otp', params: { phone } });
+      }
     } catch (error) {
       setLoading(false);
-      const msg = error.message || 'Network Error or Server Down';
+      const msg = error.response?.data?.message || error.message || 'Network Error or Server Down';
       setErrorMsg(msg);
       Alert.alert('Login Error', msg);
     }
@@ -112,11 +64,11 @@ export default function OwnerLogin() {
           </TouchableOpacity>
 
           <View style={s.logoBox}>
-            <Ionicons name="business" size={30} color="#fff" />
+            <Ionicons name="school" size={30} color="#fff" />
           </View>
 
-          <Text style={s.heading}>Owner Login</Text>
-          <Text style={s.sub}>Apni library manage karo easily</Text>
+          <Text style={s.heading}>Student Login</Text>
+          <Text style={s.sub}>Apni study space access karo</Text>
 
           <View style={s.inputContainer}>
             <Text style={s.label}>Phone Number</Text>
@@ -141,15 +93,6 @@ export default function OwnerLogin() {
 
           {errorMsg ? <Text style={{ color: 'red', marginBottom: 16, textAlign: 'center' }}>{errorMsg}</Text> : null}
 
-          <TouchableOpacity 
-            style={s.googleBtn} 
-            onPress={() => promptAsync()} 
-            disabled={!request || loading}
-          >
-            <Ionicons name="logo-google" size={16} color={theme.textDark} style={{ marginRight: 8 }} />
-            <Text style={s.googleText}>Google se Login karo</Text>
-          </TouchableOpacity>
-
         </ScrollView>
       </KeyboardAvoidingView>
     </SafeAreaView>
@@ -161,21 +104,14 @@ const s = StyleSheet.create({
   flex: { flex: 1 },
   container: { flexGrow: 1, paddingHorizontal: 22, paddingTop: 40, alignItems: 'center' },
   back: { alignSelf: 'flex-start', padding: 4, marginBottom: 20 },
-  
   logoBox: { width: 64, height: 64, backgroundColor: theme.primaryOr, borderRadius: 20, justifyContent: 'center', alignItems: 'center', marginBottom: 20 },
-  
   heading: { fontSize: 26, fontWeight: '800', color: theme.textDark, letterSpacing: -0.4, marginBottom: 8 },
   sub: { fontSize: 14, color: theme.textMu, textAlign: 'center', marginBottom: 32 },
-  
   inputContainer: { width: '100%', marginBottom: 24 },
   label: { fontSize: 13, color: theme.textDark, fontWeight: '600', marginBottom: 8 },
   phoneRow: { flexDirection: 'row', alignItems: 'center', backgroundColor: theme.inputBg, borderRadius: 16, paddingHorizontal: 16 },
   prefix: { fontSize: 16, color: theme.textDark, fontWeight: '600', marginRight: 10 },
   input: { flex: 1, paddingVertical: 16, fontSize: 16, color: theme.textDark, fontWeight: '500' },
-  
   btn: { width: '100%', backgroundColor: theme.primaryOr, paddingVertical: 16, borderRadius: 16, alignItems: 'center', marginBottom: 16, shadowColor: theme.primaryOr, shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.2, shadowRadius: 8, elevation: 4 },
   btnText: { color: theme.textWh, fontSize: 16, fontWeight: '700' },
-  
-  googleBtn: { width: '100%', flexDirection: 'row', backgroundColor: theme.cardBg, borderWidth: 1, borderColor: theme.cardBorder, borderRadius: 16, paddingVertical: 16, alignItems: 'center', justifyContent: 'center' },
-  googleText: { fontSize: 15, color: theme.textDark, fontWeight: '600' }
 });

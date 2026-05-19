@@ -1,15 +1,18 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Modal } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../../../src/context/AppContext';
-
+import { openWhatsAppToOwner } from '../../../src/services/whatsapp';
 
 export default function StudentBookings() {
   const router = useRouter();
-  const { libraries, savedLibraryIds, theme: tColors } = useApp();
+  const { libraries, savedLibraryIds, currentBookings, studentData, theme: tColors } = useApp();
   const saved = libraries.filter((l) => savedLibraryIds.includes(l.id));
   const [activeTab, setActiveTab] = useState('bookings'); // 'bookings' | 'saved'
+  
+  const [receiptVisible, setReceiptVisible] = useState(false);
+  const [selectedBooking, setSelectedBooking] = useState(null);
 
   const s = StyleSheet.create({
     container: { flex: 1, backgroundColor: tColors.bg },
@@ -50,6 +53,27 @@ export default function StudentBookings() {
     actionBtnOutline: { flex: 1, borderWidth: 1.5, borderColor: tColors.primary, paddingVertical: 12, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
     actionBtnOutlineText: { color: tColors.primary, fontWeight: '700', fontSize: 14 },
     
+    /* Receipt Modal */
+    modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.7)', justifyContent: 'center', padding: 20 },
+    receiptCard: { backgroundColor: '#FFF', borderRadius: 24, overflow: 'hidden' },
+    receiptHeader: { backgroundColor: tColors.primary, padding: 24, alignItems: 'center' },
+    receiptLibName: { color: '#FFF', fontSize: 20, fontWeight: '800', marginTop: 10 },
+    receiptTitle: { color: 'rgba(255,255,255,0.8)', fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 },
+    
+    receiptBody: { padding: 24 },
+    receiptRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
+    receiptLabel: { fontSize: 13, color: tColors.textGray, fontWeight: '600' },
+    receiptValue: { fontSize: 14, color: tColors.textDark, fontWeight: '700' },
+    divider: { height: 1, backgroundColor: tColors.border, marginVertical: 16, borderStyle: 'dashed' },
+    
+    totalSection: { backgroundColor: tColors.bg, padding: 16, borderRadius: 16, marginTop: 8 },
+    totalLabel: { fontSize: 14, color: tColors.textDark, fontWeight: '800' },
+    totalAmount: { fontSize: 24, color: tColors.primary, fontWeight: '900' },
+    
+    footerNote: { fontSize: 11, color: tColors.textGray, textAlign: 'center', marginTop: 24, fontStyle: 'italic' },
+    closeBtn: { backgroundColor: tColors.textDark, paddingVertical: 16, alignItems: 'center' },
+    closeBtnText: { color: '#FFF', fontWeight: '800', fontSize: 15 },
+
     /* Saved Libraries */
     savedCard: { flexDirection: 'row', backgroundColor: tColors.cardBg, borderRadius: 16, padding: 12, borderWidth: 1, borderColor: tColors.border, marginBottom: 16 },
     savedImg: { width: 90, height: 90, borderRadius: 12, backgroundColor: tColors.border },
@@ -70,15 +94,88 @@ export default function StudentBookings() {
     browseBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
   });
 
-  // Dummy active booking for demo
-  const activeBooking = {
-    libraryName: 'The Study Point Library',
-    slot: 'Morning Slot (6 AM - 2 PM)',
-    expiryDate: '15 June, 2026',
-    seatNo: 'B-14',
-    status: 'Active',
-    image: libraries[0]?.photos?.[0] || 'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=600&q=80',
+  const handleFeeReceipt = (booking) => {
+    setSelectedBooking(booking);
+    setReceiptVisible(true);
   };
+
+  const handleMessageOwner = (booking) => {
+    const phone = booking.library?.whatsapp;
+    console.log('[Debug] Messaging Owner. Phone:', phone);
+    
+    if (phone) {
+      openWhatsAppToOwner(
+        phone, 
+        booking.library.name, 
+        studentData?.name || 'Student',
+        { seat: booking.seat, shift: booking.shift }
+      );
+    } else {
+      Alert.alert(
+        'Number Missing', 
+        'Owner ne apna WhatsApp number register nahi kiya hai. Unse direct contact karein.'
+      );
+    }
+  };
+
+  const ReceiptModal = () => (
+    <Modal visible={receiptVisible} transparent animationType="fade">
+      <View style={s.modalOverlay}>
+        <View style={s.receiptCard}>
+          <View style={s.receiptHeader}>
+            <View style={{ backgroundColor: 'rgba(255,255,255,0.2)', padding: 10, borderRadius: 12 }}>
+              <Ionicons name="library" size={32} color="#FFF" />
+            </View>
+            <Text style={s.receiptLibName}>{selectedBooking?.library?.name}</Text>
+            <Text style={s.receiptTitle}>Fee Receipt</Text>
+          </View>
+          
+          <View style={s.receiptBody}>
+            <View style={s.receiptRow}>
+              <Text style={s.receiptLabel}>Receipt No.</Text>
+              <Text style={s.receiptValue}>#RW-{selectedBooking?._id?.substring(0, 6).toUpperCase() || '000000'}</Text>
+            </View>
+            <View style={s.receiptRow}>
+              <Text style={s.receiptLabel}>Student Name</Text>
+              <Text style={s.receiptValue}>{studentData?.name || 'Student'}</Text>
+            </View>
+            <View style={s.receiptRow}>
+              <Text style={s.receiptLabel}>Seat Number</Text>
+              <Text style={s.receiptValue}>{selectedBooking?.seat ? `Seat ${selectedBooking.seat}` : 'Not Assigned'}</Text>
+            </View>
+            <View style={s.receiptRow}>
+              <Text style={s.receiptLabel}>Shift</Text>
+              <Text style={s.receiptValue}>{selectedBooking?.shift || 'Full Day'}</Text>
+            </View>
+            
+            <View style={s.divider} />
+            
+            <View style={s.receiptRow}>
+              <Text style={s.receiptLabel}>Start Date</Text>
+              <Text style={s.receiptValue}>{selectedBooking?.startDate ? new Date(selectedBooking.startDate).toLocaleDateString() : 'N/A'}</Text>
+            </View>
+            <View style={s.receiptRow}>
+              <Text style={s.receiptLabel}>End Date</Text>
+              <Text style={s.receiptValue}>{selectedBooking?.endDate ? new Date(selectedBooking.endDate).toLocaleDateString() : 'N/A'}</Text>
+            </View>
+            
+            <View style={s.totalSection}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <Text style={s.totalLabel}>Total Amount Paid</Text>
+                <Text style={s.totalAmount}>₹{selectedBooking?.amount || 0}</Text>
+              </View>
+            </View>
+            
+            <Text style={s.footerNote}>This is an electronically generated receipt by LibraryWala. No signature required.</Text>
+          </View>
+          
+          <TouchableOpacity style={s.closeBtn} onPress={() => setReceiptVisible(false)}>
+            <Text style={s.closeBtnText}>CLOSE</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
+  );
 
   return (
     <View style={s.container}>
@@ -101,46 +198,59 @@ export default function StudentBookings() {
         {activeTab === 'bookings' ? (
           // ACTIVE BOOKINGS VIEW
           <View>
-            <View style={s.ticketCard}>
-              <View style={s.ticketHeader}>
-                <View style={s.statusPill}>
-                  <View style={s.statusDot} />
-                  <Text style={s.statusText}>{activeBooking.status}</Text>
-                </View>
-                <Text style={s.seatText}>Seat: {activeBooking.seatNo}</Text>
-              </View>
-              
-              <View style={s.ticketBody}>
-                <Image source={{ uri: activeBooking.image }} style={s.ticketImage} />
-                <View style={s.ticketInfo}>
-                  <Text style={s.libName} numberOfLines={1}>{activeBooking.libraryName}</Text>
-                  <Text style={s.slotText}>{activeBooking.slot}</Text>
-                  
-                  <View style={s.dateRow}>
-                    <View style={s.dateBox}>
-                      <Text style={s.dateLabel}>Joined On</Text>
-                      <Text style={s.dateValue}>15 May, 2026</Text>
+            {currentBookings && currentBookings.length > 0 ? (
+              currentBookings.map((booking) => (
+                <View key={booking._id} style={s.ticketCard}>
+                  <View style={s.ticketHeader}>
+                    <View style={[s.statusPill, booking.status === 'Pending' && { backgroundColor: '#FEF3C7' }, booking.status === 'Expired' && { backgroundColor: '#FEE2E2' }]}>
+                      <View style={[s.statusDot, booking.status === 'Pending' && { backgroundColor: '#F59E0B' }, booking.status === 'Expired' && { backgroundColor: '#DC2626' }]} />
+                      <Text style={[s.statusText, booking.status === 'Pending' && { color: '#F59E0B' }, booking.status === 'Expired' && { color: '#DC2626' }]}>{booking.status}</Text>
                     </View>
-                    <View style={s.dateDivider} />
-                    <View style={s.dateBox}>
-                      <Text style={s.dateLabel}>Expires On</Text>
-                      <Text style={[s.dateValue, { color: '#DC2626' }]}>{activeBooking.expiryDate}</Text>
+                    <Text style={s.seatText}>Seat: {booking.seat || 'Pending'}</Text>
+                  </View>
+                  
+                  <View style={s.ticketBody}>
+                    <Image source={{ uri: booking.library?.photos?.[0] || 'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=600&q=80' }} style={s.ticketImage} />
+                    <View style={s.ticketInfo}>
+                      <Text style={s.libName} numberOfLines={1}>{booking.library?.name || 'Library Name'}</Text>
+                      <Text style={s.slotText}>{booking.shift}</Text>
+                      
+                      <View style={s.dateRow}>
+                        <View style={s.dateBox}>
+                          <Text style={s.dateLabel}>Joined On</Text>
+                          <Text style={s.dateValue}>{new Date(booking.startDate).toLocaleDateString()}</Text>
+                        </View>
+                        <View style={s.dateDivider} />
+                        <View style={s.dateBox}>
+                          <Text style={s.dateLabel}>Expires On</Text>
+                          <Text style={[s.dateValue, { color: '#DC2626' }]}>{new Date(booking.endDate).toLocaleDateString()}</Text>
+                        </View>
+                      </View>
                     </View>
                   </View>
+                  
+                  <View style={s.ticketFooter}>
+                    <TouchableOpacity style={s.actionBtn} onPress={() => handleFeeReceipt(booking)} activeOpacity={0.8}>
+                      <Ionicons name="document-text-outline" size={16} color={tColors.primary} />
+                      <Text style={s.actionBtnText}>Fee Receipt</Text>
+                    </TouchableOpacity>
+                    <TouchableOpacity style={s.actionBtnOutline} onPress={() => handleMessageOwner(booking)} activeOpacity={0.8}>
+                      <Ionicons name="chatbubbles-outline" size={16} color={tColors.primary} />
+                      <Text style={s.actionBtnOutlineText}>Message Owner</Text>
+                    </TouchableOpacity>
+                  </View>
                 </View>
-              </View>
-              
-              <View style={s.ticketFooter}>
-                <TouchableOpacity style={s.actionBtn}>
-                  <Ionicons name="document-text-outline" size={16} color={tColors.primary} />
-                  <Text style={s.actionBtnText}>Fee Receipt</Text>
-                </TouchableOpacity>
-                <TouchableOpacity style={s.actionBtnOutline}>
-                  <Ionicons name="chatbubbles-outline" size={16} color={tColors.primary} />
-                  <Text style={s.actionBtnOutlineText}>Message Owner</Text>
+              ))
+            ) : (
+              <View style={s.empty}>
+                <Ionicons name="ticket-outline" size={64} color="#D1D5DB" />
+                <Text style={s.emptyTitle}>No Active Bookings</Text>
+                <Text style={s.emptySub}>You haven&apos;t booked any seats yet. Go to Explore to find libraries.</Text>
+                <TouchableOpacity style={s.browseBtn} onPress={() => router.push('/student/tabs/home')}>
+                  <Text style={s.browseBtnText}>Explore Libraries</Text>
                 </TouchableOpacity>
               </View>
-            </View>
+            )}
           </View>
         ) : (
           // SAVED LIBRARIES VIEW
@@ -181,8 +291,7 @@ export default function StudentBookings() {
           )
         )}
       </ScrollView>
+      <ReceiptModal />
     </View>
   );
 }
-
-

@@ -1,14 +1,14 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import colors from '../../src/constants/colors';
-import { createLibrary } from '../../src/services/libraryService';
+import { updateLibrary } from '../../src/services/libraryService';
 import { useApp } from '../../src/context/AppContext';
 
-export default function AddLibrary() {
+export default function EditLibrary() {
   const router = useRouter();
-  const { fetchDashboardData } = useApp();
+  const { currentLibrary, fetchDashboardData } = useApp();
   const [loading, setLoading] = useState(false);
 
   const FACILITY_OPTIONS = [
@@ -21,11 +21,37 @@ export default function AddLibrary() {
     total_seats: '',
     halfTimeFee: '',
     fullTimeFee: '',
-    upiId: '',
     whatsapp: '',
-    selectedFacilities: ['WiFi', 'RO Water'],
-    otherFacilities: ''
+    selectedFacilities: [],
+    otherFacilities: '',
   });
+
+  useEffect(() => {
+    if (currentLibrary) {
+      const existingFacilities = currentLibrary.facilities || [];
+      const predefined = existingFacilities.filter(f => FACILITY_OPTIONS.includes(f) || ['wifi', 'ac', 'water'].includes(f.toLowerCase()));
+      // Map legacy names to new names
+      const mappedPredefined = predefined.map(f => {
+        if (f.toLowerCase() === 'wifi') return 'WiFi';
+        if (f.toLowerCase() === 'ac') return 'AC';
+        if (f.toLowerCase() === 'water') return 'RO Water';
+        return f;
+      });
+      
+      const customFacilities = existingFacilities.filter(f => !FACILITY_OPTIONS.includes(f) && !['wifi', 'ac', 'water'].includes(f.toLowerCase())).join(', ');
+
+      setForm({
+        name: currentLibrary.name || '',
+        address: currentLibrary.address || '',
+        total_seats: currentLibrary.total_seats ? currentLibrary.total_seats.toString() : '',
+        halfTimeFee: currentLibrary.half_time_fee ? currentLibrary.half_time_fee.toString() : '',
+        fullTimeFee: currentLibrary.full_time_fee ? currentLibrary.full_time_fee.toString() : '',
+        whatsapp: currentLibrary.whatsapp || '',
+        selectedFacilities: mappedPredefined,
+        otherFacilities: customFacilities,
+      });
+    }
+  }, [currentLibrary]);
 
   const handleSave = async () => {
     if (!form.name || !form.address || !form.total_seats || !form.fullTimeFee) {
@@ -46,7 +72,6 @@ export default function AddLibrary() {
         name: form.name,
         address: form.address,
         total_seats: Number(form.total_seats),
-        available_seats: Number(form.total_seats),
         half_time_fee: Number(form.halfTimeFee || 0),
         full_time_fee: Number(form.fullTimeFee),
         wifi_available: facilities.includes('WiFi'),
@@ -55,16 +80,17 @@ export default function AddLibrary() {
         facilities
       };
 
-      const res = await createLibrary(payload);
+      await updateLibrary(currentLibrary._id, payload);
       
-      if (Platform.OS === 'web') window.alert('Library registered successfully!');
-      else Alert.alert('✅ Success', 'Library registered successfully!');
-      fetchDashboardData(); 
-      router.replace('/owner/tabs');
+      if (Platform.OS === 'web') window.alert('Library updated successfully!');
+      else Alert.alert('✅ Success', 'Library updated successfully!');
+      
+      await fetchDashboardData(); 
+      router.back();
     } catch (error) {
-      const msg = error.response?.data?.message || error.message || 'Could not save library';
-      if (Platform.OS === 'web') window.alert('Registration Failed: ' + msg);
-      else Alert.alert('Registration Failed', msg);
+      const msg = error.response?.data?.message || error.message || 'Could not update library';
+      if (Platform.OS === 'web') window.alert('Update Failed: ' + msg);
+      else Alert.alert('Update Failed', msg);
     } finally {
       setLoading(false);
     }
@@ -77,8 +103,8 @@ export default function AddLibrary() {
           <Ionicons name="arrow-back" size={24} color={colors.textPrimary} />
         </TouchableOpacity>
 
-        <Text style={s.heading}>Register Library</Text>
-        <Text style={s.sub}>Set up your library details to start managing students</Text>
+        <Text style={s.heading}>Edit Library</Text>
+        <Text style={s.sub}>Update your library details below</Text>
 
         <View style={s.form}>
           <Text style={s.label}>Library Name *</Text>
@@ -173,12 +199,13 @@ export default function AddLibrary() {
             onChangeText={(v) => setForm({...form, otherFacilities: v})}
           />
 
+
           <TouchableOpacity 
             style={[s.saveBtn, loading && { opacity: 0.7 }]} 
             onPress={handleSave}
             disabled={loading}
           >
-            <Text style={s.saveText}>{loading ? 'Saving...' : 'Register Library'}</Text>
+            <Text style={s.saveText}>{loading ? 'Saving...' : 'Save Changes'}</Text>
           </TouchableOpacity>
         </View>
       </ScrollView>

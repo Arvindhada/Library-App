@@ -1,5 +1,5 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ImageBackground } from 'react-native';
+import React, { useState } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ImageBackground, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../../../src/context/AppContext';
@@ -16,17 +16,28 @@ const tColors = {
   badgeBg: 'rgba(0,0,0,0.3)',
 };
 
-// We will map over the 'libraries' from context instead of DUMMY_LIBS.
-
 export default function OwnerHome() {
   const router = useRouter();
-  const { ownerData, libraries } = useApp();
+  const { ownerData, libraries, pendingBookings } = useApp();
+  const [searchQuery, setSearchQuery] = useState('');
 
   const goDetail = (id) => router.push({ pathname: '/student/library-detail', params: { id } });
 
+  // Filter libraries based on search query
+  const filteredLibraries = (libraries || []).filter(lib => {
+    if (!searchQuery) return true;
+    const q = searchQuery.toLowerCase();
+    return (
+      (lib.name && lib.name.toLowerCase().includes(q)) ||
+      (lib.address && lib.address.toLowerCase().includes(q)) ||
+      (lib.city && lib.city.toLowerCase().includes(q)) ||
+      (lib.area && lib.area.toLowerCase().includes(q))
+    );
+  });
+
   return (
     <View style={s.container}>
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scrollContent}>
+      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scrollContent} keyboardShouldPersistTaps="handled">
         
         {/* Header */}
         <View style={s.header}>
@@ -36,8 +47,13 @@ export default function OwnerHome() {
             <Text style={s.title}>study space</Text>
           </View>
           <View style={s.headerRight}>
-            <TouchableOpacity style={s.bellBtn}>
+            <TouchableOpacity style={s.bellBtn} onPress={() => router.push('/owner/notifications')} activeOpacity={0.8}>
               <Ionicons name="notifications" size={20} color="#FFF" />
+              {pendingBookings?.length > 0 && (
+                <View style={s.bellBadge}>
+                  <Text style={s.bellBadgeText}>{pendingBookings?.length}</Text>
+                </View>
+              )}
             </TouchableOpacity>
             <View style={s.locationBadge}>
               <Ionicons name="location" size={12} color={tColors.primary} />
@@ -47,10 +63,21 @@ export default function OwnerHome() {
         </View>
 
         {/* Search */}
-        <TouchableOpacity style={s.searchBar} activeOpacity={0.9}>
+        <View style={s.searchBar}>
           <Ionicons name="search" size={20} color={tColors.textGray} />
-          <Text style={s.searchPlaceholder}>Library name ya area...</Text>
-        </TouchableOpacity>
+          <TextInput 
+            style={s.searchInput}
+            placeholder="Library name ya area..."
+            placeholderTextColor={tColors.textGray}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+          />
+          {searchQuery.length > 0 && (
+            <TouchableOpacity onPress={() => setSearchQuery('')}>
+              <Ionicons name="close-circle" size={20} color={tColors.textGray} />
+            </TouchableOpacity>
+          )}
+        </View>
 
         {/* Stats Row */}
         <View style={s.statsRow}>
@@ -76,11 +103,19 @@ export default function OwnerHome() {
           <TouchableOpacity><Text style={s.seeAll}>See all</Text></TouchableOpacity>
         </View>
 
+        {/* No Results Fallback */}
+        {filteredLibraries.length === 0 && (
+          <View style={{ padding: 20, alignItems: 'center' }}>
+            <Ionicons name="search-outline" size={40} color={tColors.textGray} />
+            <Text style={{ marginTop: 10, color: tColors.textGray, fontSize: 16 }}>Koi library nahi mili.</Text>
+          </View>
+        )}
+
         {/* Cards */}
-        {libraries.slice(0, 5).map((lib, i) => {
+        {filteredLibraries.slice(0, 10).map((lib, i) => {
           const distance = (1.2 + i * 0.8).toFixed(1);
           return (
-          <TouchableOpacity key={lib.id} style={s.card} activeOpacity={0.9} onPress={() => goDetail(lib.id)}>
+          <TouchableOpacity key={lib.id || lib._id || i} style={s.card} activeOpacity={0.9} onPress={() => goDetail(lib.id || lib._id)}>
             {/* Image Area placeholder */}
             <ImageBackground source={{ uri: lib.photos?.[0] || 'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=600&q=80' }} style={s.cardImgArea} imageStyle={{ borderRadius: 16 }}>
               {/* Overlay for better text readability */}
@@ -105,7 +140,7 @@ export default function OwnerHome() {
 
               <View style={s.locationRow}>
                 <Ionicons name="location-outline" size={14} color={tColors.textGray} />
-                <Text style={s.locationText} numberOfLines={1}>{lib.address} • {distance} km</Text>
+                <Text style={s.locationText} numberOfLines={1}>{lib.address || lib.area} • {distance} km</Text>
               </View>
 
               {/* Feature badges moved below */}
@@ -126,7 +161,7 @@ export default function OwnerHome() {
                 <View style={s.ratingBox}>
                   <Ionicons name="star" size={14} color="#F5A623" />
                   <Text style={s.ratingText}>{lib.rating || 4.5}</Text>
-                  <Text style={s.reviewsText}>{(lib.rating * 28).toFixed(0)} reviews</Text>
+                  <Text style={s.reviewsText}>{(lib.rating * 28 || 120).toFixed(0)} reviews</Text>
                 </View>
                 <TouchableOpacity style={s.bookBtn}>
                   <Text style={s.bookBtnText}>Book</Text>
@@ -153,9 +188,24 @@ const s = StyleSheet.create({
   bellBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: tColors.textDark, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
   locationBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: tColors.border },
   locText: { fontSize: 12, fontWeight: '600', color: tColors.textDark, marginLeft: 4 },
+  bellBadge: { 
+    position: 'absolute', 
+    top: -2, 
+    right: -2, 
+    backgroundColor: '#EF4444', 
+    minWidth: 16, 
+    height: 16, 
+    borderRadius: 8, 
+    justifyContent: 'center', 
+    alignItems: 'center', 
+    borderWidth: 2, 
+    borderColor: tColors.bg,
+    paddingHorizontal: 2
+  },
+  bellBadgeText: { color: '#FFF', fontSize: 9, fontWeight: '800' },
   
   searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', paddingHorizontal: 16, paddingVertical: 14, borderRadius: 24, borderWidth: 1, borderColor: tColors.border, marginBottom: 24 },
-  searchPlaceholder: { fontSize: 15, color: tColors.textGray, marginLeft: 10 },
+  searchInput: { flex: 1, fontSize: 15, color: tColors.textDark, marginLeft: 10, outlineStyle: 'none' },
 
   statsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32, paddingHorizontal: 10 },
   statBox: { alignItems: 'center' },
