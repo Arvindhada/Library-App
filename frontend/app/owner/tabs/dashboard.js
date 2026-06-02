@@ -202,18 +202,18 @@ export default function OwnerDashboard() {
         <View style={s.gridRow}>
           {/* Revenue - Highlighted */}
           <View style={[s.card, s.cardHL]}>
-            <Text style={s.cardLabelHL}>Today's Revenue</Text>
+            <Text style={s.cardLabelHL}>{"Today's Revenue"}</Text>
             <Text style={s.cardValHL}>₹{todayRevenue.toLocaleString('en-IN')}</Text>
             <Text style={s.cardSubGreen}>↑ 12% vs yesterday</Text>
           </View>
           {/* Seats */}
-          <View style={s.card}>
+          <TouchableOpacity style={s.card} onPress={() => router.push('/owner/seat-manager')}>
             <Text style={s.cardLabel}>Seats Occupied</Text>
             <Text style={s.cardVal}>
               {occupiedCount}<Text style={s.cardValSub}>/{totalSeats}</Text>
             </Text>
             <Text style={s.cardSubTeal}>{occupancy}% Occupancy</Text>
-          </View>
+          </TouchableOpacity>
         </View>
         <View style={[s.gridRow, { marginBottom: 20 }]}>
           {/* Due */}
@@ -274,8 +274,8 @@ export default function OwnerDashboard() {
 
         {/* ── AAJ KE STUDENTS ── */}
         <View style={s.secHeader}>
-          <Text style={s.secTitle}>Today's Students</Text>
-          <TouchableOpacity onPress={() => router.push('/owner/manage-students')}>
+          <Text style={s.secTitle}>{"Today's Students"}</Text>
+          <TouchableOpacity onPress={() => router.push('/owner/tabs/students')}>
             <Text style={s.secLink}>View All →</Text>
           </TouchableOpacity>
         </View>

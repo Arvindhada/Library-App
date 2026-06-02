@@ -39,3 +39,14 @@ export const createLibrary = async (libraryData) => {
     throw error.response?.data || error;
   }
 };
+
+export const updateLibrary = async (libraryId, libraryData) => {
+  try {
+    const config = await getAuthHeader();
+    const response = await axios.put(`${API_ENDPOINTS.LIBRARIES}/${libraryId}`, libraryData, config);
+    return response.data;
+  } catch (error) {
+    console.error('Update Library Error:', error.response?.data || error.message);
+    throw error.response?.data || error;
+  }
+};

@@ -86,7 +86,6 @@ export default function LibraryDetail() {
 
   return (
     <View style={s.container}>
-      {/* Header buttons over image */}
       <View style={s.headerBtns}>
         <TouchableOpacity style={s.hBtn} onPress={() => router.back()} activeOpacity={0.8}>
           <Ionicons name="arrow-back" size={22} color={tColors.textDark} />
@@ -97,12 +96,10 @@ export default function LibraryDetail() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        {/* Photo */}
         <TouchableOpacity activeOpacity={0.9} onPress={() => setIsImageViewVisible(true)}>
           <Image source={{ uri: lib.photos?.[0] || fallbackImage }} style={s.heroImage} resizeMode="cover" />
         </TouchableOpacity>
 
-        {/* Info Content */}
         <View style={s.infoContent}>
           <Text style={s.libName}>{lib.name}</Text>
 
@@ -132,7 +129,6 @@ export default function LibraryDetail() {
 
           <View style={s.divider} />
 
-          {/* Seat & Slot Section */}
           <Text style={s.secTitle}>Select Time Slot</Text>
           <View style={s.slotRow}>
             <TouchableOpacity style={[s.slotBtn, slotType === 'morning' && s.slotActive]} onPress={() => setSlotType('morning')} activeOpacity={0.8}>
@@ -163,7 +159,6 @@ export default function LibraryDetail() {
 
           <View style={s.divider} />
 
-          {/* Facilities */}
           <Text style={s.secTitle}>Facilities</Text>
           <View style={s.facilityGrid}>
             {facilities.map((f, i) => {
@@ -179,11 +174,10 @@ export default function LibraryDetail() {
             })}
           </View>
 
-          <View style={{ height: 100 }} /> {/* Extra padding for sticky bottom bar */}
+          <View style={{ height: 100 }} />
         </View>
       </ScrollView>
 
-      {/* Sticky Bottom Bar */}
       <View style={s.stickyBottomBar}>
         <View style={s.bottomBarPriceBox}>
           <Text style={s.bottomBarPriceLabel}>Monthly Fee</Text>

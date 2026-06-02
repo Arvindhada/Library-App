@@ -20,7 +20,7 @@ const tColors = {
 
 export default function OwnerHome() {
   const router = useRouter();
-  const { ownerData, libraries } = useApp();
+  const { ownerData, libraries, currentLibrary } = useApp();
 
   const goDetail = (id) => router.push({ pathname: '/student/library-detail', params: { id } });
 
@@ -51,6 +51,23 @@ export default function OwnerHome() {
           <Ionicons name="search" size={20} color={tColors.textGray} />
           <Text style={s.searchPlaceholder}>Library name ya area...</Text>
         </TouchableOpacity>
+
+        {/* Add Library Banner */}
+        {!currentLibrary && (
+          <View style={s.bannerCard}>
+            <View style={s.bannerContent}>
+              <Text style={s.bannerTitle}>List Your Library on LibConnect</Text>
+              <Text style={s.bannerSub}>Register your study space today to manage students, seats, and collect fees digitally!</Text>
+              <TouchableOpacity 
+                style={s.bannerBtn} 
+                onPress={() => router.push('/owner/add-library')}
+                activeOpacity={0.8}
+              >
+                <Text style={s.bannerBtnText}>+ Add Library</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
 
         {/* Stats Row */}
         <View style={s.statsRow}>
@@ -156,6 +173,41 @@ const s = StyleSheet.create({
   
   searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', paddingHorizontal: 16, paddingVertical: 14, borderRadius: 24, borderWidth: 1, borderColor: tColors.border, marginBottom: 24 },
   searchPlaceholder: { fontSize: 15, color: tColors.textGray, marginLeft: 10 },
+
+  bannerCard: {
+    backgroundColor: '#E8F5E0', // C.primaryLight (soft green)
+    borderColor: '#9FE1CB',     // C.primaryBorder
+    borderWidth: 1,
+    borderRadius: 20,
+    padding: 16,
+    marginBottom: 24,
+  },
+  bannerContent: {
+    gap: 6,
+  },
+  bannerTitle: {
+    fontSize: 16,
+    fontWeight: 'bold',
+    color: '#0F6E56',           // C.primary (deep green)
+  },
+  bannerSub: {
+    fontSize: 13,
+    color: '#6F7A74',           // C.textGray
+    lineHeight: 18,
+  },
+  bannerBtn: {
+    backgroundColor: '#0F6E56', // C.primary green
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 12,
+    alignSelf: 'flex-start',
+    marginTop: 6,
+  },
+  bannerBtnText: {
+    color: '#FFF',
+    fontSize: 13,
+    fontWeight: 'bold',
+  },
 
   statsRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 32, paddingHorizontal: 10 },
   statBox: { alignItems: 'center' },

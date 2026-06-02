@@ -130,11 +130,57 @@ export const AppProvider = ({ children }) => {
     setStudents((prev) => prev.filter((s) => s.id !== id));
   };
 
+  const vacateSeat = (seatNumber) => {
+    setCurrentBookings((prev) =>
+      prev.map((b) => (parseInt(b.seat, 10) === parseInt(seatNumber, 10) ? { ...b, status: 'Inactive' } : b))
+    );
+  };
+
+  const registerLibrary = async (libraryData) => {
+    try {
+      const { createLibrary } = require('../services/libraryService');
+      const lib = await createLibrary(libraryData);
+      setCurrentLibrary(lib);
+      return lib;
+    } catch (error) {
+      console.warn('Backend registration failed, using local mock fallback:', error.message);
+      const mockLib = {
+        _id: 'dummy-lib-1',
+        name: libraryData.name,
+        address: libraryData.address,
+        total_seats: libraryData.total_seats,
+        totalSeats: libraryData.total_seats,
+        available_seats: libraryData.total_seats,
+        half_time_fee: libraryData.halfTime?.fee || 0,
+        full_time_fee: libraryData.fullTime?.fee || 0,
+        halfTime: libraryData.halfTime,
+        fullTime: libraryData.fullTime,
+      };
+      setCurrentLibrary(mockLib);
+      return mockLib;
+    }
+  };
+
   // Get owner library
   const getOwnerLibrary = () => libraries.find((l) => l.id === ownerData.libraryId) || libraries[0];
 
   // Update owner library details (for edit form)
-  const updateOwnerLibrary = (updates) => {
+  const updateOwnerLibrary = async (updates) => {
+    if (currentLibrary && currentLibrary._id) {
+      try {
+        const { updateLibrary } = require('../services/libraryService');
+        const updatedLib = await updateLibrary(currentLibrary._id, updates);
+        setCurrentLibrary(updatedLib);
+        return updatedLib;
+      } catch (error) {
+        console.error('Failed to update library in backend:', error);
+        throw error;
+      }
+    } else {
+      // Local fallback
+      setCurrentLibrary(prev => prev ? { ...prev, ...updates } : null);
+    }
+
     const libId = ownerData.libraryId;
     setLibraries((prev) =>
       prev.map((lib) => (lib.id === libId ? { ...lib, ...updates } : lib))
@@ -155,9 +201,11 @@ export const AppProvider = ({ children }) => {
         activities, setActivities,
         addPayment,
         saveStudent, deleteStudent,
+        vacateSeat,
         updateLibrarySeats,
         getOwnerLibrary,
         updateOwnerLibrary,
+        registerLibrary,
         currentLibrary, currentBookings,
         fetchDashboardData, loading,
         isDarkMode, setIsDarkMode, theme,

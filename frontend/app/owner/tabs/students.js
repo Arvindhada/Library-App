@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   TextInput, StatusBar, Linking, Modal, Alert, ActivityIndicator, Dimensions
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -52,6 +52,7 @@ const getChip = (status, isSoon) => {
 
 export default function StudentsTab() {
   const router = useRouter();
+  const { seat } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
   const { currentBookings, currentLibrary, fetchDashboardData, loading } = useApp();
 
@@ -65,6 +66,13 @@ export default function StudentsTab() {
   const [payForm, setPayForm]       = useState({ amount: '', method: 'UPI' });
 
   useEffect(() => { fetchDashboardData(); }, []);
+
+  useEffect(() => {
+    if (seat) {
+      setForm(prev => ({ ...prev, seat: String(seat) }));
+      setAddModal(true);
+    }
+  }, [seat]);
 
   const today = new Date();
   const soon  = new Date(); soon.setDate(today.getDate() + 3);
@@ -148,7 +156,7 @@ export default function StudentsTab() {
         {/* ── HEADER ── */}
         <View style={s.header}>
           <View>
-            <Text style={s.title}>Manage Students</Text>
+            <Text style={s.title}>Students</Text>
             <Text style={s.subtitle}>{rawList.length} Total Enrolled</Text>
           </View>
           <TouchableOpacity style={s.addBtn} onPress={() => setAddModal(true)} activeOpacity={0.85}>

@@ -49,10 +49,10 @@ export default function OwnerProfile() {
   const pendingCount = currentBookings.filter(b => b.status === 'Pending').length;
 
   const handleSave = () => {
-    if (!name.trim()) { Alert.alert('Error', 'Name cannot be empty'); return; }
+    if (!name.trim()) { Alert.alert('Kmi h', 'Naam khaali nahi reh sakta.'); return; }
     setOwnerData(prev => ({ ...prev, name: name.trim(), phone: phone.trim() }));
     setEditing(false);
-    Alert.alert('✅ Saved!', 'Profile updated successfully.');
+    Alert.alert('✅ Saved!', 'Profile details save ho gayi hain.');
   };
 
   const handleLogout = () => {
@@ -134,7 +134,7 @@ export default function OwnerProfile() {
         </View>
 
         {/* ── LIBRARY CARD ── */}
-        {currentLibrary && (
+        {currentLibrary ? (
           <TouchableOpacity
             style={s.libCard}
             onPress={() => router.push('/owner/edit-library')}
@@ -150,6 +150,23 @@ export default function OwnerProfile() {
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={C.textGray} />
+          </TouchableOpacity>
+        ) : (
+          <TouchableOpacity
+            style={[s.libCard, { borderColor: C.primaryBorder, backgroundColor: C.primaryLight }]}
+            onPress={() => router.push('/owner/add-library')}
+            activeOpacity={0.9}
+          >
+            <View style={[s.libIconWrap, { backgroundColor: C.primary }]}>
+              <Ionicons name="add-circle-outline" size={22} color="#FFF" />
+            </View>
+            <View style={{ flex: 1 }}>
+              <Text style={[s.libName, { color: C.primary }]}>Register Your Library</Text>
+              <Text style={[s.libAddr, { color: C.primary }]} numberOfLines={1}>
+                Apni library register karne ke liye yahan click karein
+              </Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={C.primary} />
           </TouchableOpacity>
         )}
 
@@ -186,14 +203,24 @@ export default function OwnerProfile() {
             <Text style={s.actionTxt}>Seat Manager</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={s.actionCard} onPress={() => router.push('/owner/revenue')} activeOpacity={0.85}>
+          <TouchableOpacity style={s.actionCard} onPress={() => router.push('/owner/reports')} activeOpacity={0.85}>
             <View style={[s.actionIcon, { backgroundColor: '#DCFCE7' }]}>
               <Ionicons name="bar-chart-outline" size={22} color="#16A34A" />
             </View>
-            <Text style={s.actionTxt}>Revenue</Text>
+            <Text style={s.actionTxt}>Revenue Reports</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity style={s.actionCard} onPress={() => router.push('/owner/edit-library')} activeOpacity={0.85}>
+          <TouchableOpacity 
+            style={s.actionCard} 
+            onPress={() => {
+              if (currentLibrary) {
+                router.push('/owner/edit-library');
+              } else {
+                router.push('/owner/add-library');
+              }
+            }} 
+            activeOpacity={0.85}
+          >
             <View style={[s.actionIcon, { backgroundColor: '#EFF6FF' }]}>
               <Ionicons name="settings-outline" size={22} color="#3B82F6" />
             </View>
@@ -222,7 +249,17 @@ export default function OwnerProfile() {
           <View style={s.divider} />
 
           {/* My Library */}
-          <TouchableOpacity style={s.menuItem} onPress={() => router.push('/owner/edit-library')} activeOpacity={0.8}>
+          <TouchableOpacity 
+            style={s.menuItem} 
+            onPress={() => {
+              if (currentLibrary) {
+                router.push('/owner/edit-library');
+              } else {
+                router.push('/owner/add-library');
+              }
+            }} 
+            activeOpacity={0.8}
+          >
             <View style={[s.menuIcon, { backgroundColor: C.primaryLight }]}>
               <Ionicons name="business-outline" size={20} color={C.primary} />
             </View>

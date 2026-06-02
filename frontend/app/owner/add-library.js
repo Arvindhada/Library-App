@@ -3,12 +3,11 @@ import { View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, Alert,
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import colors from '../../src/constants/colors';
-import { createLibrary } from '../../src/services/libraryService';
 import { useApp } from '../../src/context/AppContext';
 
 export default function AddLibrary() {
   const router = useRouter();
-  const { fetchDashboardData } = useApp();
+  const { fetchDashboardData, registerLibrary } = useApp();
   const [loading, setLoading] = useState(false);
 
   const [form, setForm] = useState({
@@ -21,7 +20,7 @@ export default function AddLibrary() {
 
   const handleSave = async () => {
     if (!form.name || !form.address || !form.total_seats || !form.fullTimeFee) {
-      Alert.alert('Error', 'Please fill all mandatory fields');
+      Alert.alert('Kmi h', 'Kripya saare mandatory fields bharein.');
       return;
     }
 
@@ -36,12 +35,11 @@ export default function AddLibrary() {
         fullTime: { fee: Number(form.fullTimeFee) },
       };
 
-      await createLibrary(payload);
-      await fetchDashboardData(); // Refresh dashboard
-      Alert.alert('Success', 'Library registered successfully!');
+      await registerLibrary(payload);
+      Alert.alert('Success ✅', 'Library register ho gayi hai!');
       router.replace('/owner/tabs');
     } catch (error) {
-      Alert.alert('Error', error.message || 'Could not save library');
+      Alert.alert('Error ❌', error.message || 'Library register nahi ho payi.');
     } finally {
       setLoading(false);
     }
