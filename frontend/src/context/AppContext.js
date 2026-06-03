@@ -66,6 +66,16 @@ export const AppProvider = ({ children }) => {
       const stored = await AsyncStorage.getItem(REVENUE_KEY);
       if (stored) {
         setRevenueTransactions(JSON.parse(stored));
+      } else {
+        // Seed initial dummy data so the owner can see the design
+        const todayStr = new Date().toISOString().split('T')[0];
+        const dummyData = [
+          { id: 't1', date: todayStr, type: 'income', category: 'student_fee', amount: 1200, shift: 'Full Time', studentName: 'Aman Sharma', method: 'UPI', createdAt: new Date().toISOString() },
+          { id: 't2', date: todayStr, type: 'expense', category: 'electricity', amount: 2400, shift: null, studentName: null, method: 'Cash', note: 'May Electricity Bill', createdAt: new Date(Date.now() - 3600000).toISOString() },
+          { id: 't3', date: new Date(Date.now() - 86400000).toISOString().split('T')[0], type: 'income', category: 'due_collection', amount: 800, shift: 'Morning', studentName: 'Priya Verma', method: 'Cash', createdAt: new Date(Date.now() - 86400000).toISOString() },
+        ];
+        setRevenueTransactions(dummyData);
+        AsyncStorage.setItem(REVENUE_KEY, JSON.stringify(dummyData));
       }
     } catch (e) {
       console.warn('Could not load revenue data:', e.message);
