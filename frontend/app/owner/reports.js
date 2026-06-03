@@ -515,66 +515,68 @@ export default function OwnerReports() {
               <Text style={[s.emptyDueTxt, { fontSize: 12, marginTop: 4 }]}>Add a student or collect a fee to see history here.</Text>
             </View>
           ) : (
-            groupedHistory.map(group => (
-              <View key={group.dateStr}>
-                {/* Date group header */}
-                <View style={s.historyDateHeader}>
-                  <View style={s.historyDateLine} />
-                  <Text style={s.historyDateTxt}>{group.label}</Text>
-                  <View style={s.historyDateLine} />
-                </View>
+            <ScrollView nestedScrollEnabled style={{ maxHeight: 350 }} showsVerticalScrollIndicator={false}>
+              {groupedHistory.map(group => (
+                <View key={group.dateStr}>
+                  {/* Date group header */}
+                  <View style={s.historyDateHeader}>
+                    <View style={s.historyDateLine} />
+                    <Text style={s.historyDateTxt}>{group.label}</Text>
+                    <View style={s.historyDateLine} />
+                  </View>
 
-                {group.entries.map((t, i) => {
-                  const isIncome = t.type === 'income';
-                  const catInfo = CATEGORY_ICONS[t.category] || CATEGORY_ICONS.other;
-                  const initials = t.studentName
-                    ? t.studentName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
-                    : null;
-                  return (
-                    <View key={t.id} style={[
-                      s.historyRow,
-                      i < group.entries.length - 1 && { borderBottomWidth: 0.5, borderBottomColor: C.border }
-                    ]}>
-                      {/* Icon / Avatar */}
-                      <View style={[s.historyIcon, { backgroundColor: isIncome ? C.primaryLight : C.orangeLight }]}>
-                        {initials ? (
-                          <Text style={[s.historyInitials, { color: isIncome ? C.primary : C.orange }]}>{initials}</Text>
-                        ) : (
-                          <Ionicons name={catInfo.icon} size={16} color={catInfo.color} />
-                        )}
-                      </View>
-
-                      {/* Details */}
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.historyName} numberOfLines={1}>
-                          {t.studentName || t.note || (t.category.charAt(0).toUpperCase() + t.category.slice(1).replace('_', ' '))}
-                        </Text>
-                        <View style={s.historyMetaRow}>
-                          {t.shift && (
-                            <View style={s.historyChip}>
-                              <Text style={s.historyChipTxt}>{t.shift}</Text>
-                            </View>
-                          )}
-                          <View style={[s.historyChip, { backgroundColor: '#F0F0F0' }]}>
-                            <Text style={s.historyChipTxt}>{t.method}</Text>
-                          </View>
-                          {!isIncome && (
-                            <View style={[s.historyChip, { backgroundColor: C.orangeLight }]}>
-                              <Text style={[s.historyChipTxt, { color: C.orange }]}>Expense</Text>
-                            </View>
+                  {group.entries.map((t, i) => {
+                    const isIncome = t.type === 'income';
+                    const catInfo = CATEGORY_ICONS[t.category] || CATEGORY_ICONS.other;
+                    const initials = t.studentName
+                      ? t.studentName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+                      : null;
+                    return (
+                      <View key={t.id} style={[
+                        s.historyRow,
+                        i < group.entries.length - 1 && { borderBottomWidth: 0.5, borderBottomColor: C.border }
+                      ]}>
+                        {/* Icon / Avatar */}
+                        <View style={[s.historyIcon, { backgroundColor: isIncome ? C.primaryLight : C.orangeLight }]}>
+                          {initials ? (
+                            <Text style={[s.historyInitials, { color: isIncome ? C.primary : C.orange }]}>{initials}</Text>
+                          ) : (
+                            <Ionicons name={catInfo.icon} size={16} color={catInfo.color} />
                           )}
                         </View>
-                      </View>
 
-                      {/* Amount */}
-                      <Text style={[s.historyAmt, { color: isIncome ? C.green : C.red }]}>
-                        {isIncome ? '+' : '-'}{formatAmount(t.amount)}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
-            ))
+                        {/* Details */}
+                        <View style={{ flex: 1 }}>
+                          <Text style={s.historyName} numberOfLines={1}>
+                            {t.studentName || t.note || (t.category.charAt(0).toUpperCase() + t.category.slice(1).replace('_', ' '))}
+                          </Text>
+                          <View style={s.historyMetaRow}>
+                            {t.shift && (
+                              <View style={s.historyChip}>
+                                <Text style={s.historyChipTxt}>{t.shift}</Text>
+                              </View>
+                            )}
+                            <View style={[s.historyChip, { backgroundColor: '#F0F0F0' }]}>
+                              <Text style={s.historyChipTxt}>{t.method}</Text>
+                            </View>
+                            {!isIncome && (
+                              <View style={[s.historyChip, { backgroundColor: C.orangeLight }]}>
+                                <Text style={[s.historyChipTxt, { color: C.orange }]}>Expense</Text>
+                              </View>
+                            )}
+                          </View>
+                        </View>
+
+                        {/* Amount */}
+                        <Text style={[s.historyAmt, { color: isIncome ? C.green : C.red }]}>
+                          {isIncome ? '+' : '-'}{formatAmount(t.amount)}
+                        </Text>
+                      </View>
+                    );
+                  })}
+                </View>
+              ))}
+            </ScrollView>
           )}
         </View>
 
@@ -821,7 +823,7 @@ const s = StyleSheet.create({
   emptyDueTxt: { color: C.textGray, fontSize: 14, fontWeight: '500' },
 
   // Add expense button
-  addExpenseBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.primary, borderRadius: 16, paddingVertical: 16, marginTop: 4 },
+  addExpenseBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: C.primary, borderRadius: 16, paddingVertical: 16, marginTop: 4, marginBottom: 12 },
   addExpenseTxt: { color: '#FFF', fontSize: 16, fontWeight: '700' },
 
   // Modals
