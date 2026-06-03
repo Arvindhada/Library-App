@@ -62,7 +62,10 @@ export default function StudentsTab() {
   const [payModal, setPayModal]     = useState(false);
   const [selStudent, setSelStudent] = useState(null);
   const [saving, setSaving]         = useState(false);
-  const [form, setForm]             = useState({ name: '', phone: '', seat: '', plan: 'Full Time' });
+  const [form, setForm]             = useState({
+    name: '', phone: '', gender: 'Male', address: '', date: new Date().toISOString().split('T')[0],
+    seat: '', plan: 'Full Time', isPaid: true
+  });
   const [payForm, setPayForm]       = useState({ amount: '', method: 'UPI' });
 
   useEffect(() => { fetchDashboardData(); }, []);
@@ -111,24 +114,36 @@ export default function StudentsTab() {
     }
     setSaving(true);
     try {
-      await ownerAddStudent({ name: form.name, phone: form.phone, seat: form.seat, shift: form.plan, libraryId: currentLibrary?._id });
-      // Auto-add income entry to revenue when new student joins
-      const joinFee = form.plan === 'Half Time'
-        ? (currentLibrary?.halfTime?.fee || 600)
-        : (currentLibrary?.fullTime?.fee || 1000);
-      await addRevenueEntry({
-        type: 'income',
-        category: 'student_fee',
-        amount: joinFee,
-        shift: form.plan,
-        studentName: form.name,
-        method: 'Cash',
-        note: `New student joined — Seat ${form.seat}`,
+      // Calculate end date based on payment status (Paid = 30 days, Demo = 2 days)
+      const d = new Date(form.date);
+      if (form.isPaid) d.setDate(d.getDate() + 30);
+      else d.setDate(d.getDate() + 2);
+      
+      await ownerAddStudent({ 
+        name: form.name, phone: form.phone, seat: form.seat, shift: form.plan, libraryId: currentLibrary?._id,
+        gender: form.gender, address: form.address, admissionDate: form.date, isPaid: form.isPaid, endDate: d.toISOString()
       });
+      
+      // Auto-add income entry to revenue ONLY if fee is paid today
+      if (form.isPaid) {
+        const joinFee = form.plan === 'Half Time'
+          ? (currentLibrary?.halfTime?.fee || 600)
+          : (currentLibrary?.fullTime?.fee || 1000);
+        await addRevenueEntry({
+          type: 'income',
+          category: 'student_fee',
+          amount: joinFee,
+          shift: form.plan,
+          studentName: form.name,
+          method: 'Cash',
+          note: `New admission — Seat ${form.seat}`,
+        });
+      }
+      
       fetchDashboardData();
       setAddModal(false);
-      setForm({ name: '', phone: '', seat: '', plan: 'Full Time' });
-      Alert.alert('✅ Done!', 'Student added successfully.');
+      setForm({ name: '', phone: '', gender: 'Male', address: '', date: new Date().toISOString().split('T')[0], seat: '', plan: 'Full Time', isPaid: true });
+      Alert.alert('✅ Done!', form.isPaid ? 'Student added successfully (Paid).' : 'Student added on 2-Day Demo.');
     } catch (e) { Alert.alert('Error', e.message || 'Could not add student.'); }
     finally { setSaving(false); }
   };
@@ -360,33 +375,86 @@ export default function StudentsTab() {
         <Ionicons name="add" size={30} color="#FFF" />
       </TouchableOpacity>
 
-      {/* ── ADD STUDENT MODAL ── */}
+      {/* ── ADD STUDENT MODAL (ADVANCED) ── */}
       <Modal visible={addModal} animationType="slide" transparent>
         <View style={s.overlay}>
-          <View style={s.modalBox}>
+          <View style={[s.modalBox, { maxHeight: '90%', paddingBottom: 20 }]}>
             <View style={s.modalHead}>
-              <Text style={s.modalTitle}>Add New Student</Text>
+              <Text style={s.modalTitle}>New Admission</Text>
               <TouchableOpacity onPress={() => setAddModal(false)}>
                 <Ionicons name="close" size={22} color={C.textGray} />
               </TouchableOpacity>
             </View>
-            <Text style={s.lbl}>Student Name *</Text>
-            <TextInput style={s.inp} placeholder="Full name" placeholderTextColor={C.textGray} value={form.name} onChangeText={v => setForm(p => ({ ...p, name: v }))} />
-            <Text style={s.lbl}>Phone Number *</Text>
-            <TextInput style={s.inp} placeholder="10-digit mobile" placeholderTextColor={C.textGray} keyboardType="phone-pad" maxLength={10} value={form.phone} onChangeText={v => setForm(p => ({ ...p, phone: v }))} />
-            <Text style={s.lbl}>Seat Number *</Text>
-            <TextInput style={s.inp} placeholder="e.g. 12 or A4" placeholderTextColor={C.textGray} value={form.seat} onChangeText={v => setForm(p => ({ ...p, seat: v }))} />
-            <Text style={s.lbl}>Shift / Plan</Text>
-            <View style={s.planRow}>
-              {['Full Time', 'Morning', 'Evening'].map(p => (
-                <TouchableOpacity key={p} style={[s.planChip, form.plan === p && s.planChipAct]} onPress={() => setForm(prev => ({ ...prev, plan: p }))}>
-                  <Text style={[s.planChipTxt, form.plan === p && { color: '#FFF' }]}>{p}</Text>
+            
+            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
+              {/* Basic Info */}
+              <Text style={s.lbl}>Student Name *</Text>
+              <TextInput style={s.inp} placeholder="Full name" placeholderTextColor={C.textGray} value={form.name} onChangeText={v => setForm(p => ({ ...p, name: v }))} />
+              
+              <Text style={s.lbl}>Phone Number *</Text>
+              <View style={[s.inp, { flexDirection: 'row', alignItems: 'center', paddingVertical: 0 }]}>
+                <TextInput style={{ flex: 1, paddingVertical: 13, fontSize: 15, color: C.textDark }} placeholder="10-digit mobile" placeholderTextColor={C.textGray} keyboardType="phone-pad" maxLength={10} value={form.phone} onChangeText={v => setForm(p => ({ ...p, phone: v }))} />
+                {form.phone.length === 10 && <Ionicons name="checkmark-circle" size={20} color={C.green} />}
+              </View>
+
+              {/* Gender */}
+              <Text style={s.lbl}>Gender</Text>
+              <View style={s.planRow}>
+                {['Male', 'Female'].map(g => (
+                  <TouchableOpacity key={g} style={[s.planChip, form.gender === g && s.planChipAct]} onPress={() => setForm(prev => ({ ...prev, gender: g }))}>
+                    <Text style={[s.planChipTxt, form.gender === g && { color: '#FFF' }]}>{g}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Address */}
+              <Text style={s.lbl}>Address</Text>
+              <TextInput style={[s.inp, { height: 60, textAlignVertical: 'top' }]} placeholder="Full address" placeholderTextColor={C.textGray} multiline value={form.address} onChangeText={v => setForm(p => ({ ...p, address: v }))} />
+
+              {/* Admission Date */}
+              <Text style={s.lbl}>Admission Date</Text>
+              <TextInput style={s.inp} placeholder="YYYY-MM-DD" placeholderTextColor={C.textGray} value={form.date} onChangeText={v => setForm(p => ({ ...p, date: v }))} />
+
+              {/* Seat & Plan */}
+              <Text style={s.lbl}>Seat Number *</Text>
+              <TextInput style={s.inp} placeholder="e.g. 12 or A4" placeholderTextColor={C.textGray} value={form.seat} onChangeText={v => setForm(p => ({ ...p, seat: v }))} />
+              <Text style={s.lbl}>Shift / Plan</Text>
+              <View style={s.planRow}>
+                {['Full Time', 'Morning', 'Evening'].map(p => (
+                  <TouchableOpacity key={p} style={[s.planChip, form.plan === p && s.planChipAct]} onPress={() => setForm(prev => ({ ...prev, plan: p }))}>
+                    <Text style={[s.planChipTxt, form.plan === p && { color: '#FFF' }]}>{p}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+
+              {/* Payment Section */}
+              <View style={s.paymentToggleBox}>
+                <View style={{ flex: 1 }}>
+                  <Text style={s.paymentToggleTitle}>Fee Collected Now?</Text>
+                  <Text style={s.paymentToggleSub}>
+                    {form.isPaid ? 'Payment will be recorded in revenue.' : 'Student will be added on 2-Day Demo.'}
+                  </Text>
+                </View>
+                <TouchableOpacity 
+                  style={[s.toggleTrack, form.isPaid ? { backgroundColor: C.green } : { backgroundColor: C.border }]}
+                  onPress={() => setForm(p => ({ ...p, isPaid: !p.isPaid }))}
+                  activeOpacity={0.8}
+                >
+                  <View style={[s.toggleKnob, form.isPaid ? { alignSelf: 'flex-end' } : { alignSelf: 'flex-start' }]} />
                 </TouchableOpacity>
-              ))}
-            </View>
-            <TouchableOpacity style={s.saveBtn} onPress={handleAdd} activeOpacity={0.85} disabled={saving}>
-              {saving ? <ActivityIndicator color="#FFF" /> : <Text style={s.saveTxt}>Add Student</Text>}
-            </TouchableOpacity>
+              </View>
+
+              {!form.isPaid && (
+                <View style={s.demoBanner}>
+                  <Ionicons name="time-outline" size={16} color={C.orange} />
+                  <Text style={s.demoBannerTxt}>Demo mode expires in 2 days. Seat map will show as Occupied until expiry.</Text>
+                </View>
+              )}
+
+              <TouchableOpacity style={s.saveBtn} onPress={handleAdd} activeOpacity={0.85} disabled={saving}>
+                {saving ? <ActivityIndicator color="#FFF" /> : <Text style={s.saveTxt}>{form.isPaid ? 'Add & Record Payment' : 'Start 2-Day Demo'}</Text>}
+              </TouchableOpacity>
+            </ScrollView>
           </View>
         </View>
       </Modal>
@@ -486,4 +554,15 @@ const s = StyleSheet.create({
   planChipTxt: { fontSize: 13, fontWeight: '600', color: C.textGray },
   saveBtn: { backgroundColor: C.primary, borderRadius: 14, paddingVertical: 15, alignItems: 'center' },
   saveTxt: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  
+  // Custom Toggle
+  paymentToggleBox: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.bg, padding: 14, borderRadius: 14, marginBottom: 16, borderWidth: 0.5, borderColor: C.border },
+  paymentToggleTitle: { fontSize: 15, fontWeight: '700', color: C.textDark, marginBottom: 4 },
+  paymentToggleSub: { fontSize: 12, color: C.textGray, paddingRight: 10 },
+  toggleTrack: { width: 44, height: 24, borderRadius: 12, padding: 2, justifyContent: 'center' },
+  toggleKnob: { width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFF' },
+  
+  // Demo Banner
+  demoBanner: { flexDirection: 'row', gap: 8, backgroundColor: C.orangeLight, padding: 12, borderRadius: 12, marginBottom: 16, borderWidth: 0.5, borderColor: C.orangeBorder },
+  demoBannerTxt: { flex: 1, fontSize: 12, color: C.orange, fontWeight: '600', lineHeight: 18 },
 });
