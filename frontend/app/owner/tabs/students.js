@@ -376,7 +376,7 @@ export default function StudentsTab() {
             <TextInput style={s.inp} placeholder="e.g. 12 or A4" placeholderTextColor={C.textGray} value={form.seat} onChangeText={v => setForm(p => ({ ...p, seat: v }))} />
             <Text style={s.lbl}>Shift / Plan</Text>
             <View style={s.planRow}>
-              {['Full Time', 'Half Time', 'Morning', 'Evening'].map(p => (
+              {['Full Time', 'Morning', 'Evening'].map(p => (
                 <TouchableOpacity key={p} style={[s.planChip, form.plan === p && s.planChipAct]} onPress={() => setForm(prev => ({ ...prev, plan: p }))}>
                   <Text style={[s.planChipTxt, form.plan === p && { color: '#FFF' }]}>{p}</Text>
                 </TouchableOpacity>

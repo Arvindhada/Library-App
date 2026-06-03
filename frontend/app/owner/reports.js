@@ -162,7 +162,7 @@ export default function OwnerReports() {
 
   // ── Shift breakdown for the viewed month ──
   const shiftBreakdown = useMemo(() => {
-    const shifts = ['Morning', 'Evening', 'Full Time', 'Half Time'];
+    const shifts = ['Full Time', 'Morning', 'Evening'];
     const totals = {};
     shifts.forEach(s => { totals[s] = 0; });
     monthTransactions.filter(t => t.type === 'income' && t.shift).forEach(t => {
@@ -173,10 +173,9 @@ export default function OwnerReports() {
   }, [monthTransactions]);
 
   const shiftColors = {
+    'Full Time': C.primary,
     'Morning':   '#E05C2E',
-    'Evening':   C.primary,
-    'Full Time': C.amber,
-    'Half Time': '#7C3AED',
+    'Evening':   '#0891B2',
   };
 
   // ── Due collections from bookings ──

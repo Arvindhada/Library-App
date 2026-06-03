@@ -37,7 +37,7 @@ const C = {
 export default function OwnerDashboard() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { ownerData, currentLibrary, currentBookings, fetchDashboardData, loading, revenueTransactions } = useApp();
+  const { ownerData, currentLibrary, currentBookings, fetchDashboardData, loading } = useApp();
 
   useEffect(() => { fetchDashboardData(); }, []);
 
@@ -64,25 +64,6 @@ export default function OwnerDashboard() {
   const todayRevenue = useMemo(() => {
     return activeBookings.length * (currentLibrary?.fullTime?.fee || 0) || 1840;
   }, [activeBookings, currentLibrary]);
-
-  // Revenue by shift — calculated from real revenueTransactions
-  const shiftRevenue = useMemo(() => {
-    const now = new Date();
-    const month = now.getMonth();
-    const year = now.getFullYear();
-    const monthTxns = revenueTransactions.filter(t => {
-      const d = new Date(t.date);
-      return t.type === 'income' && d.getMonth() === month && d.getFullYear() === year;
-    });
-    const shifts = ['Full Time', 'Half Time', 'Morning', 'Evening'];
-    const totals = {};
-    shifts.forEach(s => { totals[s] = 0; });
-    monthTxns.forEach(t => { if (t.shift && totals[t.shift] !== undefined) totals[t.shift] += t.amount; });
-    const maxVal = Math.max(...Object.values(totals), 1);
-    return shifts.map(s => ({ shift: s, amount: totals[s], pct: totals[s] / maxVal }));
-  }, [revenueTransactions]);
-
-  const shiftColors = { 'Full Time': C.primary, 'Half Time': '#7C3AED', 'Morning': '#E05C2E', 'Evening': '#0891B2' };
 
   const getInitials = (name) =>
     name ? name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) : 'S';
@@ -177,36 +158,12 @@ export default function OwnerDashboard() {
             <Text style={[s.cardVal, { color: C.red }]}>{pendingBookings.length || 3}</Text>
             <Text style={[s.cardSubTeal, { color: C.red }]}>Action Required</Text>
           </View>
-          {/* Revenue Reports full button */}
-          <TouchableOpacity style={[s.card, { backgroundColor: C.primary, borderColor: C.primary }]} onPress={() => router.push('/owner/reports')} activeOpacity={0.85}>
-            <Ionicons name="bar-chart-outline" size={22} color="rgba(255,255,255,0.9)" style={{ marginBottom: 6 }} />
-            <Text style={[s.cardLabel, { color: 'rgba(255,255,255,0.8)' }]}>Revenue</Text>
-            <Text style={[s.cardVal, { color: '#FFF', fontSize: 15, fontWeight: '700' }]}>Reports →</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* ── REVENUE BY SHIFT ── */}
-        <View style={s.secHeader}>
-          <Text style={s.secTitle}>Revenue by Shift</Text>
-          <TouchableOpacity onPress={() => router.push('/owner/reports')}>
-            <Text style={s.secLink}>Full Report →</Text>
-          </TouchableOpacity>
-        </View>
-        <View style={[s.mapBox, { padding: 16, marginBottom: 20 }]}>
-          {shiftRevenue.map(({ shift, amount, pct }) => (
-            <View key={shift} style={s.shiftRow}>
-              <Text style={s.shiftLbl}>{shift}</Text>
-              <View style={s.shiftTrack}>
-                <View style={[s.shiftFill, { width: `${Math.round(pct * 100)}%`, backgroundColor: shiftColors[shift] }]} />
-              </View>
-              <Text style={[s.shiftAmt, amount > 0 && { color: C.textDark }]}>₹{amount.toLocaleString('en-IN')}</Text>
-            </View>
-          ))}
-          {shiftRevenue.every(s => s.amount === 0) && (
-            <Text style={{ color: C.textGray, fontSize: 13, textAlign: 'center', paddingVertical: 8 }}>
-              No revenue recorded this month yet. Collect fees to see data here.
-            </Text>
-          )}
+          {/* New Inquiries */}
+          <View style={s.card}>
+            <Text style={s.cardLabel}>New Inquiries</Text>
+            <Text style={s.cardVal}>7</Text>
+            <Text style={s.cardSubTeal}>via LibConnect</Text>
+          </View>
         </View>
 
         {/* ── LIVE SEAT MAP ── */}
