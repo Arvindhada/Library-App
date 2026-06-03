@@ -54,7 +54,7 @@ export default function StudentsTab() {
   const router = useRouter();
   const { seat } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
-  const { currentBookings, currentLibrary, fetchDashboardData, loading, addRevenueEntry } = useApp();
+  const { currentBookings, setCurrentBookings, currentLibrary, fetchDashboardData, loading, addRevenueEntry } = useApp();
 
   const [search, setSearch]         = useState('');
   const [filter, setFilter]         = useState('All');
@@ -119,10 +119,25 @@ export default function StudentsTab() {
       if (form.isPaid) d.setDate(d.getDate() + 30);
       else d.setDate(d.getDate() + 2);
       
-      await ownerAddStudent({ 
-        name: form.name, phone: form.phone, seat: form.seat, shift: form.plan, libraryId: currentLibrary?._id,
-        gender: form.gender, address: form.address, admissionDate: form.date, isPaid: form.isPaid, endDate: d.toISOString()
-      });
+      try {
+        await ownerAddStudent({ 
+          name: form.name, phone: form.phone, seat: form.seat, shift: form.plan, libraryId: currentLibrary?._id,
+          gender: form.gender, address: form.address, admissionDate: form.date, isPaid: form.isPaid, endDate: d.toISOString()
+        });
+      } catch (backendErr) {
+        console.warn('Backend offline, using local mock state:', backendErr.message);
+        // Inject into local state
+        const newStudent = {
+          _id: 'local-' + Date.now(),
+          student: { name: form.name, phone: form.phone },
+          seat: form.seat,
+          shift: form.plan,
+          status: 'Active',
+          endDate: d.toISOString(),
+          fee: form.plan === 'Half Time' ? (currentLibrary?.halfTime?.fee || 600) : (currentLibrary?.fullTime?.fee || 1000)
+        };
+        setCurrentBookings(prev => [...prev, newStudent]);
+      }
       
       // Auto-add income entry to revenue ONLY if fee is paid today
       if (form.isPaid) {

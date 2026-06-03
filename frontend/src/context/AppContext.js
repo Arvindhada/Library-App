@@ -263,7 +263,7 @@ export const AppProvider = ({ children }) => {
         getOwnerLibrary,
         updateOwnerLibrary,
         registerLibrary,
-        currentLibrary, currentBookings,
+        currentLibrary, currentBookings, setCurrentBookings,
         fetchDashboardData, loading,
         isDarkMode, setIsDarkMode, theme,
         // Revenue tracking
