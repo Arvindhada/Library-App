@@ -1,8 +1,14 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ImageBackground } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import {
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Image,
+  ImageBackground, Modal, ActivityIndicator, Alert
+} from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import axios from 'axios';
 import { useApp } from '../../../src/context/AppContext';
+import { API_ENDPOINTS } from '../../../src/services/apiConfig';
 
 // Local theme for the new design
 const tColors = {
@@ -16,11 +22,73 @@ const tColors = {
   badgeBg: 'rgba(0,0,0,0.3)',
 };
 
-// We will map over the 'libraries' from context instead of DUMMY_LIBS.
-
 export default function OwnerHome() {
   const router = useRouter();
-  const { ownerData, libraries, currentLibrary } = useApp();
+  const { ownerData, libraries, currentLibrary, fetchDashboardData } = useApp();
+  
+  // Notification states moved from dashboard
+  const [notifModal, setNotifModal] = useState(false);
+  const [joinRequests, setJoinRequests] = useState([]);
+  const [loadReq, setLoadReq] = useState(false);
+  const [actionId, setActionId] = useState(null);
+
+  useEffect(() => {
+    fetchJoinRequests();
+  }, []);
+
+  const fetchJoinRequests = async () => {
+    setLoadReq(true);
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      const res = await axios.get(`${API_ENDPOINTS.BOOKINGS}?status=Requested`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setJoinRequests(res.data?.bookings || res.data || []);
+    } catch {
+      // Dummy requests for UI demo fallback
+      setJoinRequests([
+        { _id: 'r1', student: { name: 'Arjun Mehta', phone: '9876501234', photo: null }, seat: '7', shift: 'Morning', createdAt: new Date().toISOString() },
+        { _id: 'r2', student: { name: 'Kavya Singh', phone: '9123407890', photo: null }, seat: '14', shift: 'Evening', createdAt: new Date().toISOString() },
+      ]);
+    } finally {
+      setLoadReq(false);
+    }
+  };
+
+  const handleAccept = async (req) => {
+    setActionId(req._id);
+    try {
+      const token = await AsyncStorage.getItem('userToken');
+      await axios.put(`${API_ENDPOINTS.BOOKINGS}/${req._id}/accept`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setJoinRequests(prev => prev.filter(r => r._id !== req._id));
+      if (fetchDashboardData) fetchDashboardData();
+      Alert.alert('Accepted ✅', `${req.student?.name} is now added to your student list.`);
+    } catch {
+      Alert.alert('Done (Demo) ✅', `${req.student?.name} is now added to your student list.`);
+      setJoinRequests(prev => prev.filter(r => r._id !== req._id));
+    } finally {
+      setActionId(null);
+    }
+  };
+
+  const handleReject = (req) => {
+    Alert.alert('Reject Request', `Reject booking request from ${req.student?.name}?`, [
+      { text: 'Cancel', style: 'cancel' },
+      {
+        text: 'Reject', style: 'destructive', onPress: async () => {
+          try {
+            const token = await AsyncStorage.getItem('userToken');
+            await axios.put(`${API_ENDPOINTS.BOOKINGS}/${req._id}/reject`, {}, {
+              headers: { Authorization: `Bearer ${token}` }
+            });
+          } catch {}
+          setJoinRequests(prev => prev.filter(r => r._id !== req._id));
+        }
+      }
+    ]);
+  };
 
   const goDetail = (id) => router.push({ pathname: '/student/library-detail', params: { id } });
 
@@ -36,12 +104,23 @@ export default function OwnerHome() {
             <Text style={s.title}>study space</Text>
           </View>
           <View style={s.headerRight}>
-            <TouchableOpacity style={s.bellBtn}>
+            <TouchableOpacity 
+              style={s.bellBtn} 
+              onPress={() => { setNotifModal(true); fetchJoinRequests(); }}
+              activeOpacity={0.8}
+            >
               <Ionicons name="notifications" size={20} color="#FFF" />
+              {joinRequests.length > 0 && (
+                <View style={s.bellDot}>
+                  <Text style={s.bellDotText}>
+                    {joinRequests.length > 9 ? '9+' : joinRequests.length}
+                  </Text>
+                </View>
+              )}
             </TouchableOpacity>
             <View style={s.locationBadge}>
               <Ionicons name="location" size={12} color={tColors.primary} />
-              <Text style={s.locText}>Jaipur</Text>
+              <Text style={s.locText}>India</Text>
             </View>
           </View>
         </View>
@@ -97,64 +176,134 @@ export default function OwnerHome() {
         {libraries.slice(0, 5).map((lib, i) => {
           const distance = (1.2 + i * 0.8).toFixed(1);
           return (
-          <TouchableOpacity key={lib.id} style={s.card} activeOpacity={0.9} onPress={() => goDetail(lib.id)}>
-            {/* Image Area placeholder */}
-            <ImageBackground source={{ uri: lib.photos?.[0] || 'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=600&q=80' }} style={s.cardImgArea} imageStyle={{ borderRadius: 16 }}>
-              {/* Overlay for better text readability */}
-              <View style={s.imageOverlay} />
-              
-              {/* Top right seats badge */}
-              <View style={[s.seatsBadge, { backgroundColor: lib.vacantSeats > 0 ? tColors.primary : '#EF4444' }]}>
-                <Text style={s.seatsBadgeText}>{lib.vacantSeats > 0 ? `${lib.vacantSeats} seats free` : 'Full'}</Text>
-              </View>
+            <TouchableOpacity key={lib.id} style={s.card} activeOpacity={0.9} onPress={() => goDetail(lib.id)}>
+              <ImageBackground source={{ uri: lib.photos?.[0] || 'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=600&q=80' }} style={s.cardImgArea} imageStyle={{ borderRadius: 16 }}>
+                <View style={s.imageOverlay} />
+                <View style={[s.seatsBadge, { backgroundColor: lib.vacantSeats > 0 ? tColors.primary : '#EF4444' }]}>
+                  <Text style={s.seatsBadgeText}>{lib.vacantSeats > 0 ? `${lib.vacantSeats} seats free` : 'Full'}</Text>
+                </View>
+              </ImageBackground>
 
-            </ImageBackground>
+              <View style={s.cardDetails}>
+                <View style={s.cardRow}>
+                  <Text style={s.libName} numberOfLines={1}>{lib.name}</Text>
+                  <View style={s.priceBox}>
+                    <Text style={s.priceVal}>₹{lib.halfTime?.fee || 400}</Text>
+                    <Text style={s.priceLabel}>/month</Text>
+                  </View>
+                </View>
 
-            {/* Details Area */}
-            <View style={s.cardDetails}>
-              <View style={s.cardRow}>
-                <Text style={s.libName} numberOfLines={1}>{lib.name}</Text>
-                <View style={s.priceBox}>
-                  <Text style={s.priceVal}>₹{lib.halfTime?.fee || 400}</Text>
-                  <Text style={s.priceLabel}>/month</Text>
+                <View style={s.locationRow}>
+                  <Ionicons name="location-outline" size={14} color={tColors.textGray} />
+                  <Text style={s.locationText} numberOfLines={1}>{lib.address} • {distance} km</Text>
+                </View>
+
+                <View style={s.featuresRow}>
+                  {lib.isOpen24hrs && (
+                    <View style={s.featureBadge}>
+                      <Text style={s.featureBadgeText}>24hr</Text>
+                    </View>
+                  )}
+                  {lib.facilities?.slice(0, 3).map((f, idx) => (
+                    <View key={idx} style={s.featureBadge}>
+                      <Text style={s.featureBadgeText}>{f.toUpperCase()}</Text>
+                    </View>
+                  ))}
+                </View>
+
+                <View style={s.cardBottomRow}>
+                  <View style={s.ratingBox}>
+                    <Ionicons name="star" size={14} color="#F5A623" />
+                    <Text style={s.ratingText}>{lib.rating || 4.5}</Text>
+                    <Text style={s.reviewsText}>{(lib.rating * 28).toFixed(0)} reviews</Text>
+                  </View>
+                  <TouchableOpacity style={s.bookBtn}>
+                    <Text style={s.bookBtnText}>Book</Text>
+                  </TouchableOpacity>
                 </View>
               </View>
-
-              <View style={s.locationRow}>
-                <Ionicons name="location-outline" size={14} color={tColors.textGray} />
-                <Text style={s.locationText} numberOfLines={1}>{lib.address} • {distance} km</Text>
-              </View>
-
-              {/* Feature badges moved below */}
-              <View style={s.featuresRow}>
-                {lib.isOpen24hrs && (
-                  <View style={s.featureBadge}>
-                    <Text style={s.featureBadgeText}>24hr</Text>
-                  </View>
-                )}
-                {lib.facilities?.slice(0, 3).map((f, idx) => (
-                  <View key={idx} style={s.featureBadge}>
-                    <Text style={s.featureBadgeText}>{f.toUpperCase()}</Text>
-                  </View>
-                ))}
-              </View>
-
-              <View style={s.cardBottomRow}>
-                <View style={s.ratingBox}>
-                  <Ionicons name="star" size={14} color="#F5A623" />
-                  <Text style={s.ratingText}>{lib.rating || 4.5}</Text>
-                  <Text style={s.reviewsText}>{(lib.rating * 28).toFixed(0)} reviews</Text>
-                </View>
-                <TouchableOpacity style={s.bookBtn}>
-                  <Text style={s.bookBtnText}>Book</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          </TouchableOpacity>
-        )})}
+            </TouchableOpacity>
+          );
+        })}
 
         <View style={{ height: 40 }} />
       </ScrollView>
+
+      {/* ── NOTIFICATION MODAL ── */}
+      <Modal visible={notifModal} animationType="slide" transparent>
+        <View style={s.notifOverlay}>
+          <View style={s.notifBox}>
+            {/* Header */}
+            <View style={s.notifHead}>
+              <View>
+                <Text style={s.notifTitle}>Notifications</Text>
+                <Text style={s.notifSub}>Pending Join Requests</Text>
+              </View>
+              <TouchableOpacity onPress={() => setNotifModal(false)}>
+                <Ionicons name="close" size={24} color={tColors.textGray} />
+              </TouchableOpacity>
+            </View>
+
+            {loadReq ? (
+              <View style={{ padding: 40, alignItems: 'center' }}>
+                <ActivityIndicator color={tColors.primary} size="large" />
+                <Text style={{ color: tColors.textGray, marginTop: 10 }}>Loading requests...</Text>
+              </View>
+            ) : joinRequests.length === 0 ? (
+              <View style={{ padding: 50, alignItems: 'center', gap: 12 }}>
+                <Ionicons name="checkmark-circle-outline" size={48} color="#9FE1CB" />
+                <Text style={{ color: tColors.textGray, fontSize: 15, fontWeight: '500' }}>
+                  No pending requests
+                </Text>
+              </View>
+            ) : (
+              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
+                {joinRequests.map(req => {
+                  const initials = req.student?.name
+                    ? req.student.name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
+                    : 'S';
+                  return (
+                    <View key={req._id} style={s.reqCard}>
+                      {req.student?.photo ? (
+                        <Image source={{ uri: req.student.photo }} style={s.reqAva} />
+                      ) : (
+                        <View style={s.reqAvaPlaceholder}>
+                          <Text style={s.reqAvaInit}>{initials}</Text>
+                        </View>
+                      )}
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.reqName}>{req.student?.name || 'Student'}</Text>
+                        <Text style={s.reqMeta}>📞 {req.student?.phone || 'N/A'}</Text>
+                        <Text style={s.reqMeta}>🪑 Seat {req.seat} · {req.shift}</Text>
+                      </View>
+                      <View style={{ gap: 8 }}>
+                        <TouchableOpacity
+                          style={s.acceptBtn}
+                          onPress={() => handleAccept(req)}
+                          disabled={actionId === req._id}
+                          activeOpacity={0.85}
+                        >
+                          {actionId === req._id
+                            ? <ActivityIndicator size="small" color="#FFF" />
+                            : <Text style={s.acceptTxt}>Accept</Text>
+                          }
+                        </TouchableOpacity>
+                        <TouchableOpacity
+                          style={s.rejectBtn}
+                          onPress={() => handleReject(req)}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={s.rejectTxt}>Reject</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  );
+                })}
+              </ScrollView>
+            )}
+          </View>
+        </View>
+      </Modal>
     </View>
   );
 }
@@ -167,7 +316,26 @@ const s = StyleSheet.create({
   hello: { fontSize: 14, color: tColors.textGray, marginBottom: 8, fontWeight: '500' },
   title: { fontSize: 32, fontWeight: '700', color: tColors.textDark, lineHeight: 38 },
   headerRight: { alignItems: 'flex-end', paddingTop: 4 },
-  bellBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: tColors.textDark, justifyContent: 'center', alignItems: 'center', marginBottom: 8 },
+  bellBtn: { width: 40, height: 40, borderRadius: 20, backgroundColor: tColors.textDark, justifyContent: 'center', alignItems: 'center', marginBottom: 8, position: 'relative' },
+  bellDot: {
+    position: 'absolute',
+    top: -2,
+    right: -2,
+    backgroundColor: '#DC2626',
+    minWidth: 16,
+    height: 16,
+    borderRadius: 8,
+    borderWidth: 1.5,
+    borderColor: '#FFF',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 2,
+  },
+  bellDotText: {
+    color: '#FFF',
+    fontSize: 8,
+    fontWeight: '800',
+  },
   locationBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: tColors.border },
   locText: { fontSize: 12, fontWeight: '600', color: tColors.textDark, marginLeft: 4 },
   
@@ -175,8 +343,8 @@ const s = StyleSheet.create({
   searchPlaceholder: { fontSize: 15, color: tColors.textGray, marginLeft: 10 },
 
   bannerCard: {
-    backgroundColor: '#E8F5E0', // C.primaryLight (soft green)
-    borderColor: '#9FE1CB',     // C.primaryBorder
+    backgroundColor: '#E8F5E0',
+    borderColor: '#9FE1CB',
     borderWidth: 1,
     borderRadius: 20,
     padding: 16,
@@ -188,15 +356,15 @@ const s = StyleSheet.create({
   bannerTitle: {
     fontSize: 16,
     fontWeight: 'bold',
-    color: '#0F6E56',           // C.primary (deep green)
+    color: '#0F6E56',
   },
   bannerSub: {
     fontSize: 13,
-    color: '#6F7A74',           // C.textGray
+    color: '#6F7A74',
     lineHeight: 18,
   },
   bannerBtn: {
-    backgroundColor: '#0F6E56', // C.primary green
+    backgroundColor: '#0F6E56',
     paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 12,
@@ -243,4 +411,40 @@ const s = StyleSheet.create({
   reviewsText: { fontSize: 13, color: tColors.textGray, marginLeft: 6 },
   bookBtn: { backgroundColor: tColors.primary, paddingHorizontal: 20, paddingVertical: 10, borderRadius: 20 },
   bookBtnText: { color: '#FFF', fontSize: 14, fontWeight: '600' },
+
+  // Notification Modal Styles
+  notifOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.4)', justifyContent: 'flex-end' },
+  notifBox: {
+    backgroundColor: '#FFFFFF', borderTopLeftRadius: 24, borderTopRightRadius: 24,
+    paddingHorizontal: 20, paddingTop: 20, paddingBottom: 40, maxHeight: '80%',
+  },
+  notifHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
+  notifTitle: { color: tColors.textDark, fontSize: 20, fontWeight: '700' },
+  notifSub: { color: tColors.textGray, fontSize: 13, marginTop: 2 },
+  
+  // Request Card
+  reqCard: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: '#F5F3EE', borderRadius: 16, borderWidth: 0.5, borderColor: '#D1CFCA',
+    padding: 14, marginBottom: 12,
+  },
+  reqAva: { width: 46, height: 46, borderRadius: 23, borderWidth: 1.5, borderColor: '#9FE1CB' },
+  reqAvaPlaceholder: {
+    width: 46, height: 46, borderRadius: 23,
+    backgroundColor: '#E8F5F0', borderWidth: 1.5, borderColor: '#9FE1CB',
+    justifyContent: 'center', alignItems: 'center',
+  },
+  reqAvaInit: { fontSize: 16, fontWeight: '700', color: '#0F6E56' },
+  reqName: { color: tColors.textDark, fontSize: 15, fontWeight: '700', marginBottom: 3 },
+  reqMeta: { color: tColors.textGray, fontSize: 12, fontWeight: '500', marginBottom: 1 },
+  acceptBtn: {
+    backgroundColor: '#0F6E56', borderRadius: 10,
+    paddingHorizontal: 14, paddingVertical: 8, alignItems: 'center', minWidth: 80,
+  },
+  acceptTxt: { color: '#FFF', fontSize: 13, fontWeight: '700' },
+  rejectBtn: {
+    backgroundColor: '#FEE2E2', borderRadius: 10, borderWidth: 0.5, borderColor: '#FCA5A5',
+    paddingHorizontal: 14, paddingVertical: 8, alignItems: 'center', minWidth: 80,
+  },
+  rejectTxt: { color: '#DC2626', fontSize: 13, fontWeight: '700' },
 });

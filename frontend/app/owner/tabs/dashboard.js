@@ -38,60 +38,8 @@ export default function OwnerDashboard() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { ownerData, currentLibrary, currentBookings, fetchDashboardData, loading } = useApp();
-  const [notifModal, setNotifModal] = useState(false);
-  const [joinRequests, setJoinRequests] = useState([]);
-  const [loadReq, setLoadReq]           = useState(false);
-  const [actionId, setActionId]         = useState(null);
 
-  useEffect(() => { fetchDashboardData(); fetchJoinRequests(); }, []);
-
-  const fetchJoinRequests = async () => {
-    setLoadReq(true);
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      const res = await axios.get(`${API_ENDPOINTS.BOOKINGS}?status=Requested`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setJoinRequests(res.data?.bookings || res.data || []);
-    } catch {
-      // Dummy requests for UI demo
-      setJoinRequests([
-        { _id: 'r1', student: { name: 'Arjun Mehta', phone: '9876501234', photo: null }, seat: '7', shift: 'Morning', createdAt: new Date().toISOString() },
-        { _id: 'r2', student: { name: 'Kavya Singh', phone: '9123407890', photo: null }, seat: '14', shift: 'Evening', createdAt: new Date().toISOString() },
-      ]);
-    } finally { setLoadReq(false); }
-  };
-
-  const handleAccept = async (req) => {
-    setActionId(req._id);
-    try {
-      const token = await AsyncStorage.getItem('userToken');
-      await axios.put(`${API_ENDPOINTS.BOOKINGS}/${req._id}/accept`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setJoinRequests(prev => prev.filter(r => r._id !== req._id));
-      fetchDashboardData();
-      Alert.alert('✅ Accepted!', `${req.student?.name} ka request accept ho gaya. Ab wo aapke Students list mein hai!`);
-    } catch {
-      Alert.alert('✅ Done (Demo)', `${req.student?.name} ab aapke Students mein add ho gaya!`);
-      setJoinRequests(prev => prev.filter(r => r._id !== req._id));
-    } finally { setActionId(null); }
-  };
-
-  const handleReject = (req) => {
-    Alert.alert('Reject Request', `${req.student?.name} ki request reject karein?`, [
-      { text: 'Cancel', style: 'cancel' },
-      { text: 'Reject', style: 'destructive', onPress: async () => {
-        try {
-          const token = await AsyncStorage.getItem('userToken');
-          await axios.put(`${API_ENDPOINTS.BOOKINGS}/${req._id}/reject`, {}, {
-            headers: { Authorization: `Bearer ${token}` }
-          });
-        } catch {}
-        setJoinRequests(prev => prev.filter(r => r._id !== req._id));
-      }}
-    ]);
-  };
+  useEffect(() => { fetchDashboardData(); }, []);
 
   const handleLogout = async () => {
     Alert.alert('Logout', 'Kya aap logout karna chahte hain?', [
@@ -181,21 +129,6 @@ export default function OwnerDashboard() {
               <Text style={s.libName} numberOfLines={1}>{currentLibrary?.name || 'Gyan Deep Library'}</Text>
             </View>
           </View>
-          {/* Right: Bell icon */}
-          <TouchableOpacity
-            style={s.bellBtn}
-            onPress={() => { setNotifModal(true); fetchJoinRequests(); }}
-            activeOpacity={0.8}
-          >
-            <Ionicons name="notifications-outline" size={20} color={C.primary} />
-            {joinRequests.length > 0 && (
-              <View style={s.bellDot}>
-                <Text style={{ color: '#FFF', fontSize: 8, fontWeight: '800' }}>
-                  {joinRequests.length > 9 ? '9+' : joinRequests.length}
-                </Text>
-              </View>
-            )}
-          </TouchableOpacity>
         </View>
 
         {/* ── 2×2 STATS GRID ── */}
@@ -314,89 +247,6 @@ export default function OwnerDashboard() {
 
         <View style={{ height: 90 }} />
       </ScrollView>
-
-      {/* ── NOTIFICATION MODAL ── */}
-      <Modal visible={notifModal} animationType="slide" transparent>
-        <View style={s.notifOverlay}>
-          <View style={s.notifBox}>
-            {/* Header */}
-            <View style={s.notifHead}>
-              <View>
-                <Text style={s.notifTitle}>Notifications</Text>
-                <Text style={s.notifSub}>Join Requests</Text>
-              </View>
-              <TouchableOpacity onPress={() => setNotifModal(false)}>
-                <Ionicons name="close" size={22} color={C.textGray} />
-              </TouchableOpacity>
-            </View>
-
-            {loadReq ? (
-              <View style={{ padding: 40, alignItems: 'center' }}>
-                <ActivityIndicator color={C.primary} size="large" />
-                <Text style={{ color: C.textGray, marginTop: 10 }}>Loading requests...</Text>
-              </View>
-            ) : joinRequests.length === 0 ? (
-              <View style={{ padding: 50, alignItems: 'center', gap: 12 }}>
-                <Ionicons name="checkmark-circle-outline" size={48} color={C.primaryBorder} />
-                <Text style={{ color: C.textGray, fontSize: 15, fontWeight: '500' }}>
-                  No pending requests
-                </Text>
-              </View>
-            ) : (
-              <ScrollView showsVerticalScrollIndicator={false} style={{ maxHeight: 420 }}>
-                {joinRequests.map(req => {
-                  const initials = req.student?.name
-                    ? req.student.name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2)
-                    : 'S';
-                  return (
-                    <View key={req._id} style={s.reqCard}>
-                      {/* Avatar */}
-                      {req.student?.photo ? (
-                        <Image source={{ uri: req.student.photo }} style={s.reqAva} />
-                      ) : (
-                        <View style={s.reqAvaPlaceholder}>
-                          <Text style={s.reqAvaInit}>{initials}</Text>
-                        </View>
-                      )}
-                      {/* Info */}
-                      <View style={{ flex: 1 }}>
-                        <Text style={s.reqName}>{req.student?.name || 'Student'}</Text>
-                        <Text style={s.reqMeta}>
-                          📞 {req.student?.phone || 'N/A'}
-                        </Text>
-                        <Text style={s.reqMeta}>
-                          🪑 Seat {req.seat} · {req.shift}
-                        </Text>
-                      </View>
-                      {/* Action Buttons */}
-                      <View style={{ gap: 8 }}>
-                        <TouchableOpacity
-                          style={s.acceptBtn}
-                          onPress={() => handleAccept(req)}
-                          disabled={actionId === req._id}
-                          activeOpacity={0.85}
-                        >
-                          {actionId === req._id
-                            ? <ActivityIndicator size="small" color="#FFF" />
-                            : <Text style={s.acceptTxt}>✓ Accept</Text>
-                          }
-                        </TouchableOpacity>
-                        <TouchableOpacity
-                          style={s.rejectBtn}
-                          onPress={() => handleReject(req)}
-                          activeOpacity={0.8}
-                        >
-                          <Text style={s.rejectTxt}>✕ Reject</Text>
-                        </TouchableOpacity>
-                      </View>
-                    </View>
-                  );
-                })}
-              </ScrollView>
-            )}
-          </View>
-        </View>
-      </Modal>
     </View>
   );
 }
