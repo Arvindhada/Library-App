@@ -231,8 +231,8 @@ export const AppProvider = ({ children }) => {
         setCurrentLibrary(updatedLib);
         return updatedLib;
       } catch (error) {
-        console.error('Failed to update library in backend:', error);
-        throw error;
+        console.warn('Backend update failed, applying locally:', error.message);
+        setCurrentLibrary(prev => ({ ...prev, ...updates }));
       }
     } else {
       // Local fallback
