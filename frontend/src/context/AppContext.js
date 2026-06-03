@@ -206,6 +206,8 @@ export const AppProvider = ({ children }) => {
         _id: 'dummy-lib-1',
         name: libraryData.name,
         address: libraryData.address,
+        phone: libraryData.phone || '',
+        timings: libraryData.timings || '',
         total_seats: libraryData.total_seats,
         totalSeats: libraryData.total_seats,
         available_seats: libraryData.total_seats,
@@ -213,6 +215,8 @@ export const AppProvider = ({ children }) => {
         full_time_fee: libraryData.fullTime?.fee || 0,
         halfTime: libraryData.halfTime,
         fullTime: libraryData.fullTime,
+        facilities: libraryData.facilities || [],
+        photos: libraryData.photos || [],
       };
       setCurrentLibrary(mockLib);
       return mockLib;
