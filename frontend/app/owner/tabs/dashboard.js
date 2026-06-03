@@ -183,10 +183,36 @@ export default function OwnerDashboard() {
               const tc =
                 seat.status === 'occ' ? '#FFF' :
                 seat.status === 'exp' ? C.orange : C.primary;
+              
+              const handleSeatPress = () => {
+                const activeMatch = activeBookings.find(b => String(b.seat) === String(seat.num));
+                if (activeMatch) {
+                  Alert.alert(`Seat ${seat.label} - Occupied`, `Student: ${activeMatch.student?.name || 'Unknown'}\nShift: ${activeMatch.shift || 'Unknown'}`);
+                  return;
+                }
+                const pendingMatch = pendingBookings.find(b => String(b.seat) === String(seat.num));
+                if (pendingMatch) {
+                  Alert.alert(`Seat ${seat.label} - Expiring Soon`, `Student: ${pendingMatch.student?.name || 'Unknown'}\nAction Required: Fee is overdue.`);
+                  return;
+                }
+                // Handle fallback dummy data case
+                if (!currentBookings.length) {
+                  if (seat.status === 'occ') {
+                    Alert.alert(`Seat ${seat.label} - Occupied`, `Student: Sample Student\nShift: Morning`);
+                    return;
+                  }
+                  if (seat.status === 'exp') {
+                    Alert.alert(`Seat ${seat.label} - Expiring Soon`, `Student: Sample Student\nAction Required: Fee is overdue.`);
+                    return;
+                  }
+                }
+                Alert.alert(`Seat ${seat.label}`, "This seat is empty and available.");
+              };
+
               return (
-                <View key={seat.num} style={[s.seat, bg]}>
+                <TouchableOpacity key={seat.num} style={[s.seat, bg]} onPress={handleSeatPress} activeOpacity={0.7}>
                   <Text style={[s.seatTxt, { color: tc }]}>{seat.label}</Text>
-                </View>
+                </TouchableOpacity>
               );
             })}
           </View>
