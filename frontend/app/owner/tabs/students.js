@@ -54,7 +54,7 @@ export default function StudentsTab() {
   const router = useRouter();
   const { seat } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
-  const { currentBookings, setCurrentBookings, currentLibrary, fetchDashboardData, loading, addRevenueEntry } = useApp();
+  const { currentBookings, setCurrentBookings, currentLibrary, fetchDashboardData, loading, addRevenueEntry, deleteStudent } = useApp();
 
   const [search, setSearch]         = useState('');
   const [filter, setFilter]         = useState('All');
@@ -160,6 +160,18 @@ export default function StudentsTab() {
       Alert.alert('✅ Done!', form.isPaid ? 'Student added successfully (Paid).' : 'Student added on 2-Day Demo.');
     } catch (e) { Alert.alert('Error', e.message || 'Could not add student.'); }
     finally { setSaving(false); }
+  };
+
+  const handleDelete = async (st) => {
+    try {
+      const { deleteBooking } = require('../../../src/services/bookingService');
+      await deleteBooking(st._id);
+    } catch (e) {
+      console.warn('Offline or error, deleting locally:', e.message);
+    }
+    deleteStudent(st._id);
+    fetchDashboardData();
+    Alert.alert('✅ Removed', `${st.student?.name} has been removed.`);
   };
 
   // Collect payment
@@ -364,12 +376,11 @@ export default function StudentsTab() {
                   <Ionicons name="logo-whatsapp" size={15} color="#16A34A" />
                 </TouchableOpacity>
 
-                {/* Delete — always */}
                 <TouchableOpacity
                   style={s.delBtn}
                   onPress={() => Alert.alert('Remove Student', 'Are you sure you want to remove this student?', [
                     { text: 'Cancel', style: 'cancel' },
-                    { text: 'Remove', style: 'destructive', onPress: () => {} }
+                    { text: 'Remove', style: 'destructive', onPress: () => handleDelete(st) }
                   ])}
                   activeOpacity={0.8}
                 >

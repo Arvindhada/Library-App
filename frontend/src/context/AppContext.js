@@ -185,6 +185,7 @@ export const AppProvider = ({ children }) => {
 
   const deleteStudent = (id) => {
     setStudents((prev) => prev.filter((s) => s.id !== id));
+    setCurrentBookings((prev) => prev.filter((b) => b._id !== id));
   };
 
   const vacateSeat = (seatNumber) => {

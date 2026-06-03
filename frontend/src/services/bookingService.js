@@ -50,3 +50,14 @@ export const ownerAddStudent = async (studentData) => {
     throw error.response?.data || error;
   }
 };
+
+export const deleteBooking = async (bookingId) => {
+  try {
+    const config = await getAuthHeader();
+    const response = await axios.delete(`${API_ENDPOINTS.BOOKINGS}/${bookingId}`, config);
+    return response.data;
+  } catch (error) {
+    console.error('Delete Booking Error:', error.response?.data || error.message);
+    throw error.response?.data || error;
+  }
+};
