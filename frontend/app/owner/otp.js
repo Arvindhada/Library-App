@@ -25,7 +25,7 @@ export default function OwnerOTP() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { phone } = useLocalSearchParams();
-  const [otp, setOtp] = useState(['', '', '', '', '', '']); // 6-digit OTP input state
+  const [otp, setOtp] = useState(['', '', '', '']); // Reverted to 4-digit OTP input state
   const [timer, setTimer] = useState(30);
   const [loading, setLoading] = useState(false);
   const refs = useRef([]);
@@ -35,18 +35,18 @@ export default function OwnerOTP() {
     return () => clearInterval(t);
   }, []);
 
-  const handleChange = (text: string, idx: number) => {
+  const handleChange = (text, idx) => {
     const newOtp = [...otp];
     newOtp[idx] = text;
     setOtp(newOtp);
 
     // Auto-focus next box
-    if (text && idx < 5) {
+    if (text && idx < 3) {
       refs.current[idx + 1]?.focus();
     }
   };
 
-  const handleKeyPress = (e: any, idx: number) => {
+  const handleKeyPress = (e, idx) => {
     if (e.nativeEvent.key === 'Backspace' && !otp[idx] && idx > 0) {
       refs.current[idx - 1]?.focus();
       const newOtp = [...otp];
@@ -57,8 +57,8 @@ export default function OwnerOTP() {
 
   const verify = async () => {
     const code = otp.join('');
-    if (code.length < 6) { 
-      Alert.alert('Invalid OTP', 'Please enter a complete 6-digit OTP.'); 
+    if (code.length < 4) { 
+      Alert.alert('Invalid OTP', 'Please enter a complete 4-digit OTP.'); 
       return; 
     }
     
@@ -102,7 +102,7 @@ export default function OwnerOTP() {
 
           {/* ── BODY HEADING ── */}
           <View style={s.bodyHeader}>
-            <Text style={s.headingText}>Enter 6-digit OTP</Text>
+            <Text style={s.headingText}>Enter 4-digit OTP</Text>
             <Text style={s.subText}>Enter the verification code sent to your device</Text>
           </View>
 
@@ -229,12 +229,13 @@ const s = StyleSheet.create({
   // OTP Row
   otpRow: {
     flexDirection: 'row',
-    justifyContent: 'space-between',
+    justifyContent: 'center',
     width: '100%',
     marginBottom: 20,
+    gap: 16,
   },
   otpBox: {
-    width: '14.5%',
+    width: 58,
     height: 64,
     borderRadius: 16,
     borderWidth: 1.5,
