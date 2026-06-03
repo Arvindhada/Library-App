@@ -263,6 +263,47 @@ export default function OwnerReports() {
     }
   };
 
+  // ── Transaction History grouped by date ──
+  const groupedHistory = useMemo(() => {
+    // Filter to viewed month's transactions, sorted newest first
+    const filtered = revenueTransactions
+      .filter(t => {
+        const d = new Date(t.date);
+        return d.getMonth() === viewingMonth && d.getFullYear() === viewingYear;
+      })
+      .sort((a, b) => new Date(b.createdAt) - new Date(a.createdAt));
+
+    // Group by date
+    const groups = {};
+    filtered.forEach(t => {
+      if (!groups[t.date]) groups[t.date] = [];
+      groups[t.date].push(t);
+    });
+
+    // Convert to sorted array of { dateStr, label, entries }
+    const todayStr = toDateStr(new Date());
+    const yesterdayStr = toDateStr(new Date(Date.now() - 86400000));
+    return Object.keys(groups)
+      .sort((a, b) => b.localeCompare(a))
+      .map(dateStr => {
+        let label;
+        if (dateStr === todayStr) label = 'Today';
+        else if (dateStr === yesterdayStr) label = 'Yesterday';
+        else label = new Date(dateStr).toLocaleDateString('en-IN', { day: 'numeric', month: 'long', year: 'numeric' });
+        return { dateStr, label, entries: groups[dateStr] };
+      });
+  }, [revenueTransactions, viewingMonth, viewingYear]);
+
+  const CATEGORY_ICONS = {
+    student_fee:   { icon: 'school-outline',       color: C.primary },
+    due_collection:{ icon: 'checkmark-circle-outline', color: C.green },
+    rent:          { icon: 'home-outline',          color: '#7C3AED' },
+    electricity:   { icon: 'flash-outline',         color: C.amber },
+    wifi:          { icon: 'wifi-outline',          color: '#2563EB' },
+    cleaning:      { icon: 'sparkles-outline',      color: '#0891B2' },
+    other:         { icon: 'ellipsis-horizontal',   color: C.textGray },
+  };
+
   const formatAmount = (n) => `₹${n.toLocaleString('en-IN')}`;
 
   return (
@@ -450,75 +491,92 @@ export default function OwnerReports() {
           )}
         </View>
 
-        {/* ── DUE COLLECTIONS ── */}
-        <View style={s.card}>
-          <View style={s.secRow}>
-            <Text style={s.secTitle}>Due Collections</Text>
-            {overdueStudents.length > 0 && (
-              <View style={s.pendingBadge}>
-                <Text style={s.pendingTxt}>{overdueStudents.length} pending</Text>
-              </View>
-            )}
-          </View>
-
-          {overdueStudents.length === 0 ? (
-            <View style={s.emptyDue}>
-              <Ionicons name="checkmark-circle-outline" size={36} color={C.green} />
-              <Text style={s.emptyDueTxt}>All students are up to date! 🎉</Text>
-            </View>
-          ) : (
-            <>
-              {totalDues > 0 && (
-                <View style={s.duesBanner}>
-                  <Ionicons name="alert-circle-outline" size={16} color={C.orange} />
-                  <Text style={s.duesBannerTxt}>
-                    Total outstanding: <Text style={{ fontWeight: '800' }}>{formatAmount(totalDues)}</Text>
-                  </Text>
-                </View>
-              )}
-              {overdueStudents.map((b) => (
-                <View key={b._id} style={s.dueCard}>
-                  {/* Left accent border */}
-                  <View style={[s.dueAccent, {
-                    backgroundColor: b.daysOverdue > 10 ? C.red : C.orange
-                  }]} />
-                  <View style={[s.dueAva, {
-                    backgroundColor: b.daysOverdue > 10 ? C.redLight : C.orangeLight
-                  }]}>
-                    <Text style={[s.dueAvaInit, {
-                      color: b.daysOverdue > 10 ? C.red : C.orange
-                    }]}>
-                      {(b.student?.name || 'S').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)}
-                    </Text>
-                  </View>
-                  <View style={{ flex: 1 }}>
-                    <Text style={s.dueName}>{b.student?.name || 'Student'}</Text>
-                    <Text style={s.dueSub}>Seat {b.seat} · {b.shift}</Text>
-                    <Text style={[s.dueOverdue, { color: b.daysOverdue > 10 ? C.red : C.orange }]}>
-                      ⏰ {b.daysOverdue} day{b.daysOverdue !== 1 ? 's' : ''} overdue · {formatAmount(b.fee)} due
-                    </Text>
-                    <View style={s.dueActions}>
-                      <TouchableOpacity style={s.collectBtn} onPress={() => openCollect(b)} activeOpacity={0.85}>
-                        <Ionicons name="checkmark" size={13} color="#FFF" />
-                        <Text style={s.collectBtnTxt}>Collect</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={s.waBtn} onPress={() => sendWhatsApp(b)} activeOpacity={0.85}>
-                        <Ionicons name="logo-whatsapp" size={13} color="#16A34A" />
-                        <Text style={s.waBtnTxt}>WhatsApp</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </View>
-              ))}
-            </>
-          )}
-        </View>
 
         {/* ── ADD EXPENSE BTN ── */}
         <TouchableOpacity style={s.addExpenseBtn} onPress={() => setExpModal(true)} activeOpacity={0.85}>
           <Ionicons name="add-circle-outline" size={20} color="#FFF" />
           <Text style={s.addExpenseTxt}>Add Expense</Text>
         </TouchableOpacity>
+
+
+        {/* ── TRANSACTION HISTORY ── */}
+        <View style={s.card}>
+          <View style={s.secRow}>
+            <Text style={s.secTitle}>Transaction History</Text>
+            <View style={s.historyBadge}>
+              <Text style={s.historyBadgeTxt}>{monthTransactions.length} entries</Text>
+            </View>
+          </View>
+
+          {groupedHistory.length === 0 ? (
+            <View style={s.emptyDue}>
+              <Ionicons name="receipt-outline" size={36} color={C.textGray} />
+              <Text style={s.emptyDueTxt}>No transactions in {MONTH_NAMES[viewingMonth]}.</Text>
+              <Text style={[s.emptyDueTxt, { fontSize: 12, marginTop: 4 }]}>Add a student or collect a fee to see history here.</Text>
+            </View>
+          ) : (
+            groupedHistory.map(group => (
+              <View key={group.dateStr}>
+                {/* Date group header */}
+                <View style={s.historyDateHeader}>
+                  <View style={s.historyDateLine} />
+                  <Text style={s.historyDateTxt}>{group.label}</Text>
+                  <View style={s.historyDateLine} />
+                </View>
+
+                {group.entries.map((t, i) => {
+                  const isIncome = t.type === 'income';
+                  const catInfo = CATEGORY_ICONS[t.category] || CATEGORY_ICONS.other;
+                  const initials = t.studentName
+                    ? t.studentName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+                    : null;
+                  return (
+                    <View key={t.id} style={[
+                      s.historyRow,
+                      i < group.entries.length - 1 && { borderBottomWidth: 0.5, borderBottomColor: C.border }
+                    ]}>
+                      {/* Icon / Avatar */}
+                      <View style={[s.historyIcon, { backgroundColor: isIncome ? C.primaryLight : C.orangeLight }]}>
+                        {initials ? (
+                          <Text style={[s.historyInitials, { color: isIncome ? C.primary : C.orange }]}>{initials}</Text>
+                        ) : (
+                          <Ionicons name={catInfo.icon} size={16} color={catInfo.color} />
+                        )}
+                      </View>
+
+                      {/* Details */}
+                      <View style={{ flex: 1 }}>
+                        <Text style={s.historyName} numberOfLines={1}>
+                          {t.studentName || t.note || (t.category.charAt(0).toUpperCase() + t.category.slice(1).replace('_', ' '))}
+                        </Text>
+                        <View style={s.historyMetaRow}>
+                          {t.shift && (
+                            <View style={s.historyChip}>
+                              <Text style={s.historyChipTxt}>{t.shift}</Text>
+                            </View>
+                          )}
+                          <View style={[s.historyChip, { backgroundColor: '#F0F0F0' }]}>
+                            <Text style={s.historyChipTxt}>{t.method}</Text>
+                          </View>
+                          {!isIncome && (
+                            <View style={[s.historyChip, { backgroundColor: C.orangeLight }]}>
+                              <Text style={[s.historyChipTxt, { color: C.orange }]}>Expense</Text>
+                            </View>
+                          )}
+                        </View>
+                      </View>
+
+                      {/* Amount */}
+                      <Text style={[s.historyAmt, { color: isIncome ? C.green : C.red }]}>
+                        {isIncome ? '+' : '-'}{formatAmount(t.amount)}
+                      </Text>
+                    </View>
+                  );
+                })}
+              </View>
+            ))
+          )}
+        </View>
 
         <View style={{ height: 40 }} />
       </ScrollView>
@@ -797,4 +855,19 @@ const s = StyleSheet.create({
   catChipTxt: { fontSize: 13, fontWeight: '600', color: C.textGray },
   saveBtn: { backgroundColor: C.primary, borderRadius: 14, paddingVertical: 15, alignItems: 'center', marginTop: 4 },
   saveTxt: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+
+  // Transaction History
+  historyBadge: { backgroundColor: C.primaryLight, borderRadius: 20, paddingHorizontal: 12, paddingVertical: 4, borderWidth: 0.5, borderColor: C.primaryBorder },
+  historyBadgeTxt: { color: C.primary, fontSize: 12, fontWeight: '700' },
+  historyDateHeader: { flexDirection: 'row', alignItems: 'center', gap: 10, marginVertical: 14 },
+  historyDateLine: { flex: 1, height: 0.5, backgroundColor: C.border },
+  historyDateTxt: { fontSize: 12, fontWeight: '700', color: C.textGray, flexShrink: 0 },
+  historyRow: { flexDirection: 'row', alignItems: 'center', gap: 12, paddingVertical: 13 },
+  historyIcon: { width: 42, height: 42, borderRadius: 21, justifyContent: 'center', alignItems: 'center', flexShrink: 0 },
+  historyInitials: { fontSize: 14, fontWeight: '800' },
+  historyName: { fontSize: 14, fontWeight: '700', color: C.textDark, marginBottom: 5 },
+  historyMetaRow: { flexDirection: 'row', gap: 6, flexWrap: 'wrap' },
+  historyChip: { backgroundColor: C.primaryLight, borderRadius: 6, paddingHorizontal: 8, paddingVertical: 3 },
+  historyChipTxt: { fontSize: 11, fontWeight: '600', color: C.textGray },
+  historyAmt: { fontSize: 16, fontWeight: '800', minWidth: 72, textAlign: 'right' },
 });
