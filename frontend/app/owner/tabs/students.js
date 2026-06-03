@@ -188,9 +188,6 @@ export default function StudentsTab() {
             <Text style={s.title}>Students</Text>
             <Text style={s.subtitle}>{rawList.length} Total Enrolled</Text>
           </View>
-          <TouchableOpacity style={s.addBtn} onPress={() => setAddModal(true)} activeOpacity={0.85}>
-            <Ionicons name="add" size={20} color="#FFF" />
-          </TouchableOpacity>
         </View>
 
         {/* ── 3 SUMMARY BOXES ── */}
@@ -358,6 +355,11 @@ export default function StudentsTab() {
         <View style={{ height: 100 }} />
       </ScrollView>
 
+      {/* ── FLOATING ACTION BUTTON (ADD STUDENT) ── */}
+      <TouchableOpacity style={s.fab} onPress={() => setAddModal(true)} activeOpacity={0.85}>
+        <Ionicons name="add" size={30} color="#FFF" />
+      </TouchableOpacity>
+
       {/* ── ADD STUDENT MODAL ── */}
       <Modal visible={addModal} animationType="slide" transparent>
         <View style={s.overlay}>
@@ -427,7 +429,8 @@ const s = StyleSheet.create({
   header: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 },
   title: { color: C.textDark, fontSize: 22, fontWeight: '700' },
   subtitle: { color: C.textGray, fontSize: 13, fontWeight: '500', marginTop: 2 },
-  addBtn: { width: 44, height: 44, borderRadius: 22, backgroundColor: C.primary, justifyContent: 'center', alignItems: 'center' },
+  
+  fab: { position: 'absolute', right: 20, bottom: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: C.primary, justifyContent: 'center', alignItems: 'center', elevation: 4, shadowColor: '#000', shadowOffset: { width: 0, height: 2 }, shadowOpacity: 0.2, shadowRadius: 4 },
 
   // 3 Summary boxes
   summaryRow: { flexDirection: 'row', gap: 10, marginBottom: 16 },
