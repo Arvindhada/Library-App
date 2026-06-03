@@ -163,7 +163,7 @@ export default function OwnerProfile() {
             <View style={{ flex: 1 }}>
               <Text style={[s.libName, { color: C.primary }]}>Register Your Library</Text>
               <Text style={[s.libAddr, { color: C.primary }]} numberOfLines={1}>
-                Apni library register karne ke liye yahan click karein
+                Tap here to register your library
               </Text>
             </View>
             <Ionicons name="chevron-forward" size={18} color={C.primary} />

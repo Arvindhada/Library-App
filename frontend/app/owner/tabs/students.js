@@ -217,7 +217,7 @@ export default function StudentsTab() {
           <Ionicons name="search-outline" size={17} color={C.textGray} />
           <TextInput
             style={s.searchInput}
-            placeholder="Student naam ya seat..."
+            placeholder="Search by name or seat..."
             placeholderTextColor={C.textGray}
             value={search}
             onChangeText={setSearch}
