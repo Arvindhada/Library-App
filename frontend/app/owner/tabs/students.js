@@ -155,7 +155,6 @@ export default function StudentsTab() {
         });
       }
       
-      fetchDashboardData();
       setAddModal(false);
       setForm({ name: '', phone: '', gender: 'Male', address: '', date: new Date().toISOString().split('T')[0], seat: '', plan: 'Full Time', isPaid: true });
       Alert.alert('✅ Done!', form.isPaid ? 'Student added successfully (Paid).' : 'Student added on 2-Day Demo.');
