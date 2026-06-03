@@ -206,7 +206,18 @@ export default function OwnerDashboard() {
                     return;
                   }
                 }
-                Alert.alert(`Seat ${seat.label}`, "This seat is empty and available.");
+                Alert.alert(
+                  `Seat ${seat.label}`,
+                  "This seat is empty.",
+                  [
+                    { text: 'Cancel', style: 'cancel' },
+                    { 
+                      text: 'Add Student', 
+                      style: 'default',
+                      onPress: () => router.push({ pathname: '/owner/tabs/students', params: { seat: seat.num } })
+                    }
+                  ]
+                );
               };
 
               return (
