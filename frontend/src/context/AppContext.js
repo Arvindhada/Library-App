@@ -56,9 +56,56 @@ export const AppProvider = ({ children }) => {
   const [currentBookings, setCurrentBookings] = useState([]);
   const [loading, setLoading] = useState(false);
 
+  // ── Revenue Transactions (persistent via AsyncStorage) ──
+  const REVENUE_KEY = '@libconnect_revenue';
+  const [revenueTransactions, setRevenueTransactions] = useState([]);
+
+  // Load revenue data from AsyncStorage
+  const loadRevenueData = async () => {
+    try {
+      const stored = await AsyncStorage.getItem(REVENUE_KEY);
+      if (stored) {
+        setRevenueTransactions(JSON.parse(stored));
+      }
+    } catch (e) {
+      console.warn('Could not load revenue data:', e.message);
+    }
+  };
+
+  // Add a new revenue entry (income or expense) and persist it
+  // entry: { type, category, amount, shift, studentName, studentId, method, note }
+  const addRevenueEntry = async (entry) => {
+    const newEntry = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 5),
+      date: new Date().toISOString().split('T')[0], // 'YYYY-MM-DD'
+      type: entry.type || 'income',             // 'income' | 'expense'
+      category: entry.category || 'student_fee',// 'student_fee'|'due_collection'|'rent'|'electricity'|'wifi'|'other'
+      amount: Number(entry.amount) || 0,
+      shift: entry.shift || null,               // 'Morning'|'Evening'|'Full Time'|'Half Time'
+      studentName: entry.studentName || null,
+      studentId: entry.studentId || null,
+      method: entry.method || 'Cash',           // 'UPI'|'Cash'|'Online'
+      note: entry.note || '',
+      createdAt: new Date().toISOString(),
+    };
+
+    setRevenueTransactions(prev => {
+      const updated = [newEntry, ...prev];
+      // Persist to AsyncStorage immediately
+      AsyncStorage.setItem(REVENUE_KEY, JSON.stringify(updated)).catch(e =>
+        console.warn('Revenue save error:', e.message)
+      );
+      return updated;
+    });
+
+    return newEntry;
+  };
+
   // Fetch Dashboard Data from Backend
   const fetchDashboardData = async () => {
     setLoading(true);
+    // Always reload revenue data on dashboard refresh
+    await loadRevenueData();
     try {
       // TEMPORARY: Bypassing actual backend call for UI testing on physical phone
       setTimeout(() => {
@@ -209,6 +256,10 @@ export const AppProvider = ({ children }) => {
         currentLibrary, currentBookings,
         fetchDashboardData, loading,
         isDarkMode, setIsDarkMode, theme,
+        // Revenue tracking
+        revenueTransactions,
+        addRevenueEntry,
+        loadRevenueData,
       }}
     >
       {children}

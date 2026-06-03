@@ -54,7 +54,7 @@ export default function StudentsTab() {
   const router = useRouter();
   const { seat } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
-  const { currentBookings, currentLibrary, fetchDashboardData, loading } = useApp();
+  const { currentBookings, currentLibrary, fetchDashboardData, loading, addRevenueEntry } = useApp();
 
   const [search, setSearch]         = useState('');
   const [filter, setFilter]         = useState('All');
@@ -112,6 +112,19 @@ export default function StudentsTab() {
     setSaving(true);
     try {
       await ownerAddStudent({ name: form.name, phone: form.phone, seat: form.seat, shift: form.plan, libraryId: currentLibrary?._id });
+      // Auto-add income entry to revenue when new student joins
+      const joinFee = form.plan === 'Half Time'
+        ? (currentLibrary?.halfTime?.fee || 600)
+        : (currentLibrary?.fullTime?.fee || 1000);
+      await addRevenueEntry({
+        type: 'income',
+        category: 'student_fee',
+        amount: joinFee,
+        shift: form.plan,
+        studentName: form.name,
+        method: 'Cash',
+        note: `New student joined — Seat ${form.seat}`,
+      });
       fetchDashboardData();
       setAddModal(false);
       setForm({ name: '', phone: '', seat: '', plan: 'Full Time' });
@@ -131,9 +144,25 @@ export default function StudentsTab() {
     setSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
-      await axios.post(API_ENDPOINTS.PAYMENTS, {
-        bookingId: selStudent._id, amount: parseInt(payForm.amount, 10), method: payForm.method,
-      }, { headers: { Authorization: `Bearer ${token}` } });
+      // Try backend first, fallback gracefully if offline
+      try {
+        await axios.post(API_ENDPOINTS.PAYMENTS, {
+          bookingId: selStudent._id, amount: parseInt(payForm.amount, 10), method: payForm.method,
+        }, { headers: { Authorization: `Bearer ${token}` }, timeout: 5000 });
+      } catch (backendErr) {
+        console.warn('Backend payment save failed (offline?), continuing locally:', backendErr.message);
+      }
+      // Auto-add income entry to revenue — always runs even if backend is offline
+      await addRevenueEntry({
+        type: 'income',
+        category: 'due_collection',
+        amount: parseInt(payForm.amount, 10),
+        shift: selStudent?.shift || null,
+        studentName: selStudent?.student?.name || null,
+        studentId: selStudent?._id || null,
+        method: payForm.method,
+        note: `Fee collected — Seat ${selStudent?.seat || ''}`,
+      });
       setPayModal(false);
       fetchDashboardData();
       Alert.alert('✅ Payment Recorded!', `₹${payForm.amount} via ${payForm.method} saved.`);
