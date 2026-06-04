@@ -31,6 +31,7 @@ export default function OwnerHome() {
   const [joinRequests, setJoinRequests] = useState([]);
   const [loadReq, setLoadReq] = useState(false);
   const [actionId, setActionId] = useState(null);
+  const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
     fetchJoinRequests();
@@ -126,10 +127,17 @@ export default function OwnerHome() {
         </View>
 
         {/* Search */}
-        <TouchableOpacity style={s.searchBar} activeOpacity={0.9}>
+        <View style={s.searchBar}>
           <Ionicons name="search" size={20} color={tColors.textGray} />
-          <Text style={s.searchPlaceholder}>Library name ya area...</Text>
-        </TouchableOpacity>
+          <TextInput 
+            style={s.searchInput}
+            placeholder="Library name ya area..."
+            placeholderTextColor={tColors.textGray}
+            value={searchQuery}
+            onChangeText={setSearchQuery}
+            autoCapitalize="none"
+          />
+        </View>
 
         {/* Add Library Banner */}
         {!currentLibrary && (
@@ -173,7 +181,14 @@ export default function OwnerHome() {
         </View>
 
         {/* Cards */}
-        {libraries.slice(0, 5).map((lib, i) => {
+        {libraries
+          .filter(lib => {
+            if (!searchQuery) return true;
+            const q = searchQuery.toLowerCase();
+            return (lib.name && lib.name.toLowerCase().includes(q)) || 
+                   (lib.address && lib.address.toLowerCase().includes(q));
+          })
+          .slice(0, 5).map((lib, i) => {
           const distance = (1.2 + i * 0.8).toFixed(1);
           return (
             <TouchableOpacity key={lib.id} style={s.card} activeOpacity={0.9} onPress={() => goDetail(lib.id)}>
@@ -339,8 +354,8 @@ const s = StyleSheet.create({
   locationBadge: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, borderWidth: 1, borderColor: tColors.border },
   locText: { fontSize: 12, fontWeight: '600', color: tColors.textDark, marginLeft: 4 },
   
-  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', paddingHorizontal: 16, paddingVertical: 14, borderRadius: 24, borderWidth: 1, borderColor: tColors.border, marginBottom: 24 },
-  searchPlaceholder: { fontSize: 15, color: tColors.textGray, marginLeft: 10 },
+  searchBar: { flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFF', paddingHorizontal: 16, paddingVertical: 12, borderRadius: 24, borderWidth: 1, borderColor: tColors.border, marginBottom: 24 },
+  searchInput: { flex: 1, fontSize: 15, color: tColors.textDark, marginLeft: 10, padding: 0, minHeight: 24 },
 
   bannerCard: {
     backgroundColor: '#E8F5E0',
