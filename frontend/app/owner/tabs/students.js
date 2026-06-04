@@ -59,6 +59,8 @@ export default function StudentsTab() {
   const [search, setSearch]         = useState('');
   const [filter, setFilter]         = useState('All');
   const [addModal, setAddModal]     = useState(false);
+  const [isEdit, setIsEdit]         = useState(false);
+  const [editId, setEditId]         = useState(null);
   const [payModal, setPayModal]     = useState(false);
   const [selStudent, setSelStudent] = useState(null);
   const [saving, setSaving]         = useState(false);
@@ -73,6 +75,8 @@ export default function StudentsTab() {
   useEffect(() => {
     if (seat) {
       setForm(prev => ({ ...prev, seat: String(seat) }));
+      setIsEdit(false);
+      setEditId(null);
       setAddModal(true);
     }
   }, [seat]);
@@ -107,7 +111,30 @@ export default function StudentsTab() {
     return matchSearch && matchFilter;
   }), [rawList, search, filter]);
 
-  // Add student
+  const openAddModal = () => {
+    setIsEdit(false);
+    setEditId(null);
+    setForm({ name: '', phone: '', gender: 'Male', address: '', date: new Date().toISOString().split('T')[0], seat: '', plan: 'Full Time', isPaid: true });
+    setAddModal(true);
+  };
+
+  const handleEditPress = (st) => {
+    setIsEdit(true);
+    setEditId(st._id);
+    setForm({
+      name: st.student?.name || '',
+      phone: st.student?.phone || '',
+      gender: st.gender || 'Male',
+      address: st.address || '',
+      date: st.admissionDate ? st.admissionDate.split('T')[0] : (st.createdAt ? st.createdAt.split('T')[0] : new Date().toISOString().split('T')[0]),
+      seat: String(st.seat || ''),
+      plan: st.shift || 'Full Time',
+      isPaid: !st.isDue
+    });
+    setAddModal(true);
+  };
+
+  // Add/Edit student
   const handleAdd = async () => {
     if (!form.name || !form.phone || !form.seat) {
       Alert.alert('Missing Fields', 'Please fill Name, Phone and Seat.'); return;
@@ -120,13 +147,29 @@ export default function StudentsTab() {
       else d.setDate(d.getDate() + 2);
       
       try {
-        await ownerAddStudent({ 
-          name: form.name, phone: form.phone, seat: form.seat, shift: form.plan, libraryId: currentLibrary?._id,
-          gender: form.gender, address: form.address, admissionDate: form.date, isPaid: form.isPaid, endDate: d.toISOString()
-        });
+        if (isEdit) {
+          // In a real app: await axios.put(...)
+        } else {
+          await ownerAddStudent({ 
+            name: form.name, phone: form.phone, seat: form.seat, shift: form.plan, libraryId: currentLibrary?._id,
+            gender: form.gender, address: form.address, admissionDate: form.date, isPaid: form.isPaid, endDate: d.toISOString()
+          });
+        }
       } catch (backendErr) {
         console.warn('Backend offline, using local mock state:', backendErr.message);
-        // Inject into local state
+      }
+      
+      // Inject into local state
+      if (isEdit) {
+        setCurrentBookings(prev => prev.map(b => b._id === editId ? {
+          ...b,
+          student: { ...b.student, name: form.name, phone: form.phone },
+          seat: form.seat,
+          shift: form.plan,
+          endDate: d.toISOString(),
+          fee: form.plan === 'Half Time' ? (currentLibrary?.halfTime?.fee || 600) : (currentLibrary?.fullTime?.fee || 1000)
+        } : b));
+      } else {
         const newStudent = {
           _id: 'local-' + Date.now(),
           student: { name: form.name, phone: form.phone },
@@ -139,8 +182,8 @@ export default function StudentsTab() {
         setCurrentBookings(prev => [...prev, newStudent]);
       }
       
-      // Auto-add income entry to revenue ONLY if fee is paid today
-      if (form.isPaid) {
+      // Auto-add income entry to revenue ONLY if fee is paid today (and not editing)
+      if (form.isPaid && !isEdit) {
         const joinFee = form.plan === 'Half Time'
           ? (currentLibrary?.halfTime?.fee || 600)
           : (currentLibrary?.fullTime?.fee || 1000);
@@ -157,8 +200,8 @@ export default function StudentsTab() {
       
       setAddModal(false);
       setForm({ name: '', phone: '', gender: 'Male', address: '', date: new Date().toISOString().split('T')[0], seat: '', plan: 'Full Time', isPaid: true });
-      Alert.alert('✅ Done!', form.isPaid ? 'Student added successfully (Paid).' : 'Student added on 2-Day Demo.');
-    } catch (e) { Alert.alert('Error', e.message || 'Could not add student.'); }
+      Alert.alert('✅ Done!', isEdit ? 'Student updated successfully.' : (form.isPaid ? 'Student added successfully (Paid).' : 'Student added on 2-Day Demo.'));
+    } catch (e) { Alert.alert('Error', e.message || 'Could not save student.'); }
     finally { setSaving(false); }
   };
 
@@ -354,7 +397,7 @@ export default function StudentsTab() {
                   </View>
                 )}
 
-                {/* WhatsApp — SABKE LIYE, alag message */}
+                {/* WhatsApp */}
                 <TouchableOpacity
                   style={s.waBtn}
                   onPress={() => {
@@ -376,6 +419,10 @@ export default function StudentsTab() {
                   <Ionicons name="logo-whatsapp" size={15} color="#16A34A" />
                 </TouchableOpacity>
 
+                {/* Edit & Delete */}
+                <TouchableOpacity style={s.editBtn} onPress={() => handleEditPress(st)} activeOpacity={0.8}>
+                  <Ionicons name="pencil" size={15} color={C.primary} />
+                </TouchableOpacity>
                 <TouchableOpacity
                   style={s.delBtn}
                   onPress={() => Alert.alert('Remove Student', 'Are you sure you want to remove this student?', [
@@ -396,7 +443,7 @@ export default function StudentsTab() {
       </ScrollView>
 
       {/* ── FLOATING ACTION BUTTON (ADD STUDENT) ── */}
-      <TouchableOpacity style={s.fab} onPress={() => setAddModal(true)} activeOpacity={0.85}>
+      <TouchableOpacity style={s.fab} onPress={openAddModal} activeOpacity={0.85}>
         <Ionicons name="add" size={30} color="#FFF" />
       </TouchableOpacity>
 
@@ -405,7 +452,7 @@ export default function StudentsTab() {
         <View style={s.overlay}>
           <View style={[s.modalBox, { maxHeight: '90%', paddingBottom: 20 }]}>
             <View style={s.modalHead}>
-              <Text style={s.modalTitle}>New Admission</Text>
+              <Text style={s.modalTitle}>{isEdit ? 'Edit Student' : 'New Admission'}</Text>
               <TouchableOpacity onPress={() => setAddModal(false)}>
                 <Ionicons name="close" size={22} color={C.textGray} />
               </TouchableOpacity>
@@ -453,31 +500,22 @@ export default function StudentsTab() {
               </View>
 
               {/* Payment Section */}
-              <View style={s.paymentToggleBox}>
-                <View style={{ flex: 1 }}>
-                  <Text style={s.paymentToggleTitle}>Fee Collected Now?</Text>
-                  <Text style={s.paymentToggleSub}>
-                    {form.isPaid ? 'Payment will be recorded in revenue.' : 'Student will be added on 2-Day Demo.'}
-                  </Text>
+              <Text style={s.lbl}>Payment Status</Text>
+              {!isEdit ? (
+                <View style={s.planRow}>
+                  <TouchableOpacity style={[s.planChip, form.isPaid && s.planChipAct]} onPress={() => setForm(p => ({...p, isPaid: true}))}>
+                    <Text style={[s.planChipTxt, form.isPaid && { color: '#FFF' }]}>Paid Now (30 Days)</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity style={[s.planChip, !form.isPaid && s.planChipAct]} onPress={() => setForm(p => ({...p, isPaid: false}))}>
+                    <Text style={[s.planChipTxt, !form.isPaid && { color: '#FFF' }]}>Free Demo (2 Days)</Text>
+                  </TouchableOpacity>
                 </View>
-                <TouchableOpacity 
-                  style={[s.toggleTrack, form.isPaid ? { backgroundColor: C.green } : { backgroundColor: C.border }]}
-                  onPress={() => setForm(p => ({ ...p, isPaid: !p.isPaid }))}
-                  activeOpacity={0.8}
-                >
-                  <View style={[s.toggleKnob, form.isPaid ? { alignSelf: 'flex-end' } : { alignSelf: 'flex-start' }]} />
-                </TouchableOpacity>
-              </View>
-
-              {!form.isPaid && (
-                <View style={s.demoBanner}>
-                  <Ionicons name="time-outline" size={16} color={C.orange} />
-                  <Text style={s.demoBannerTxt}>Demo mode expires in 2 days. Seat map will show as Occupied until expiry.</Text>
-                </View>
+              ) : (
+                <Text style={{ fontSize: 13, color: C.textGray, fontStyle: 'italic', marginBottom: 20 }}>Payment status can be updated via the Collect Fee button.</Text>
               )}
 
               <TouchableOpacity style={s.saveBtn} onPress={handleAdd} activeOpacity={0.85} disabled={saving}>
-                {saving ? <ActivityIndicator color="#FFF" /> : <Text style={s.saveTxt}>{form.isPaid ? 'Add & Record Payment' : 'Start 2-Day Demo'}</Text>}
+                {saving ? <ActivityIndicator color="#FFF" /> : <Text style={s.saveTxt}>{isEdit ? 'Save Changes' : (form.isPaid ? 'Add & Record Payment' : 'Start 2-Day Demo')}</Text>}
               </TouchableOpacity>
             </ScrollView>
           </View>
@@ -561,6 +599,7 @@ const s = StyleSheet.create({
   paidTag: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#DCFCE7', borderRadius: 12, paddingVertical: 11, paddingHorizontal: 14, borderWidth: 0.5, borderColor: '#86EFAC' },
   paidTxt: { color: '#166534', fontSize: 13, fontWeight: '700' },
   waBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#DCFCE7', borderWidth: 0.5, borderColor: '#86EFAC', justifyContent: 'center', alignItems: 'center' },
+  editBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#EFF6FF', borderWidth: 0.5, borderColor: '#BFDBFE', justifyContent: 'center', alignItems: 'center' },
   delBtn: { width: 42, height: 42, borderRadius: 12, backgroundColor: '#FEE2E2', borderWidth: 0.5, borderColor: '#FCA5A5', justifyContent: 'center', alignItems: 'center' },
 
   empty: { alignItems: 'center', paddingVertical: 80, gap: 12 },
