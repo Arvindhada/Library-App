@@ -6,6 +6,7 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
+import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../../src/context/AppContext';
 
@@ -36,6 +37,7 @@ export default function AddLibraryWizard() {
   
   const [step, setStep] = useState(1);
   const [loading, setLoading] = useState(false);
+  const [locLoading, setLocLoading] = useState(false);
   
   // Form State
   const [form, setForm] = useState({
@@ -48,7 +50,8 @@ export default function AddLibraryWizard() {
     fullTimeFee: '',
     halfTimeFee: '',
     facilities: [],
-    photos: []
+    photos: [],
+    coordinates: null,
   });
 
   const toggleFacility = (id) => {
@@ -77,6 +80,40 @@ export default function AddLibraryWizard() {
 
   const removePhoto = (index) => {
     setForm(prev => ({ ...prev, photos: prev.photos.filter((_, i) => i !== index) }));
+  };
+
+  const fetchLocation = async () => {
+    setLocLoading(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Permission Denied', 'Location permission is required to fetch address.');
+        return;
+      }
+      
+      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      const { latitude, longitude } = location.coords;
+      
+      const geoArr = await Location.reverseGeocodeAsync({ latitude, longitude });
+      if (geoArr.length > 0) {
+        const place = geoArr[0];
+        const addrStr = [place.name, place.street, place.district, place.city, place.region, place.postalCode]
+          .filter(Boolean)
+          .join(', ');
+        
+        setForm(prev => ({ 
+          ...prev, 
+          address: addrStr,
+          coordinates: { lat: latitude, lng: longitude }
+        }));
+      } else {
+        Alert.alert('Address Not Found', 'Could not determine the address for this location.');
+      }
+    } catch (e) {
+      Alert.alert('Error', 'Failed to fetch location. Please enter manually.');
+    } finally {
+      setLocLoading(false);
+    }
   };
 
   const handleNext = () => {
@@ -113,7 +150,8 @@ export default function AddLibraryWizard() {
         halfTime: { fee: Number(form.halfTimeFee || 0) },
         fullTime: { fee: Number(form.fullTimeFee) },
         facilities: form.facilities,
-        photos: form.photos, // local URIs; in a real app, these would be uploaded to Firebase/S3 first
+        photos: form.photos,
+        coordinates: form.coordinates,
       };
 
       await registerLibrary(payload);
@@ -137,7 +175,13 @@ export default function AddLibraryWizard() {
       <Text style={s.label}>Contact Number</Text>
       <TextInput style={s.input} placeholder="9876543210" keyboardType="phone-pad" value={form.phone} onChangeText={v => setForm({...form, phone: v})} />
 
-      <Text style={s.label}>Complete Address</Text>
+      <View style={s.locHeader}>
+        <Text style={[s.label, { marginBottom: 0 }]}>Complete Address</Text>
+        <TouchableOpacity style={s.locBtn} onPress={fetchLocation} disabled={locLoading}>
+          <Ionicons name="location" size={14} color={C.primary} />
+          <Text style={s.locBtnTxt}>{locLoading ? 'Fetching...' : 'Use Current Location'}</Text>
+        </TouchableOpacity>
+      </View>
       <TextInput style={[s.input, { height: 80, textAlignVertical: 'top' }]} placeholder="Street, Area, City" multiline value={form.address} onChangeText={v => setForm({...form, address: v})} />
 
       <View style={s.row}>
@@ -269,6 +313,10 @@ const s = StyleSheet.create({
   label: { fontSize: 13, fontWeight: '600', color: C.textGray, marginBottom: 8, marginTop: 12 },
   input: { backgroundColor: C.surface, borderWidth: 1, borderColor: C.border, borderRadius: 12, padding: 14, fontSize: 16, color: C.textDark },
   row: { flexDirection: 'row' },
+  
+  locHeader: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 8, marginTop: 12 },
+  locBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.primaryLight, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, gap: 4 },
+  locBtnTxt: { fontSize: 12, fontWeight: '700', color: C.primary },
   
   facGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
   facBtn: { flexDirection: 'row', alignItems: 'center', backgroundColor: C.surface, borderWidth: 1, borderColor: C.border, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 10, gap: 8 },

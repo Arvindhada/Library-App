@@ -217,6 +217,7 @@ export const AppProvider = ({ children }) => {
         fullTime: libraryData.fullTime,
         facilities: libraryData.facilities || [],
         photos: libraryData.photos || [],
+        coordinates: libraryData.coordinates || null,
       };
       setCurrentLibrary(mockLib);
       return mockLib;
