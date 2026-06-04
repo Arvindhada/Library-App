@@ -52,8 +52,18 @@ export const AppProvider = ({ children }) => {
     { id: '2', type: 'payment', text: 'Priya Verma paid ₹400', time: '5h ago' },
   ]);
 
-  const [currentLibrary, setCurrentLibrary] = useState(null);
-  const [currentBookings, setCurrentBookings] = useState([]);
+  const [currentLibrary, setCurrentLibrary] = useState({
+    _id: 'dummy-lib-1',
+    name: 'Premium Study Library',
+    totalSeats: 100,
+    halfTime: { fee: 600 },
+    fullTime: { fee: 1000 }
+  });
+  const [currentBookings, setCurrentBookings] = useState([
+    { _id: 'b1', seat: '12', shift: 'Full Time', status: 'Active', endDate: '2026-06-10T00:00:00Z', student: { name: 'Aman Sharma', phone: '9876543210' } },
+    { _id: 'b2', seat: '05', shift: 'Half Time', status: 'Active', endDate: '2024-01-01T00:00:00Z', student: { name: 'Priya Verma', phone: '9123456789' } },
+    { _id: 'b3', seat: '18', shift: 'Full Time', status: 'Active', endDate: new Date(new Date().setDate(new Date().getDate() + 1)).toISOString(), student: { name: 'Rahul Joshi', phone: '9988776655' } },
+  ]);
   const [loading, setLoading] = useState(false);
 
   // ── Revenue Transactions (persistent via AsyncStorage) ──
@@ -119,20 +129,6 @@ export const AppProvider = ({ children }) => {
     try {
       // TEMPORARY: Bypassing actual backend call for UI testing on physical phone
       setTimeout(() => {
-        setCurrentLibrary({
-          _id: 'dummy-lib-1',
-          name: 'Premium Study Library',
-          totalSeats: 100,
-          halfTime: { fee: 600 },
-          fullTime: { fee: 1000 }
-        });
-        
-        // Mock current bookings
-        setCurrentBookings([
-          { _id: 'b1', seat: '12', shift: 'Full Time', status: 'Active', endDate: '2026-06-10T00:00:00Z', student: { name: 'Aman Sharma', phone: '9876543210' } },
-          { _id: 'b2', seat: '05', shift: 'Half Time', status: 'Active', endDate: '2024-01-01T00:00:00Z', student: { name: 'Priya Verma', phone: '9123456789' } },
-          { _id: 'b3', seat: '18', shift: 'Full Time', status: 'Active', endDate: new Date(new Date().setDate(new Date().getDate() + 1)).toISOString(), student: { name: 'Rahul Joshi', phone: '9988776655' } },
-        ]);
         setLoading(false);
       }, 500);
       
