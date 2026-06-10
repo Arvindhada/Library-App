@@ -125,7 +125,7 @@ export default function OwnerOTP() {
 
           {/* ── RESEND TEXT ── */}
           <View style={s.resendContainer}>
-            <Text style={s.resendText}>Didn't receive OTP? </Text>
+            <Text style={s.resendText}>{"Didn't receive OTP? "}</Text>
             {timer > 0 ? (
               <Text style={s.timerText}>Resend in {timer}s</Text>
             ) : (

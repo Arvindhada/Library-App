@@ -1,13 +1,15 @@
 import React, { useState } from 'react';
 import { 
   View, Text, StyleSheet, TextInput, TouchableOpacity, ScrollView, 
-  Alert, KeyboardAvoidingView, Platform, Image, StatusBar 
+  Alert, KeyboardAvoidingView, Platform, Image, StatusBar, Linking,
+  ActivityIndicator
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import * as ImagePicker from 'expo-image-picker';
 import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useApp } from '../../src/context/AppContext';
 
 // Colors based on premium stitch design
@@ -33,11 +35,17 @@ const FACILITIES = [
 export default function AddLibraryWizard() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { registerLibrary } = useApp();
+  const { registerLibrary, setSubscriptionPlan } = useApp();
   
-  const [step, setStep] = useState(1);
+  const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
   const [locLoading, setLocLoading] = useState(false);
+  
+  // Subscription States
+  const [selectedPlan, setSelectedPlan] = useState(null); // 'monthly' | 'yearly'
+  const [paymentVerifying, setPaymentVerifying] = useState(false);
+  const [verified, setVerified] = useState(false);
+  const [utr, setUtr] = useState('');
   
   // Form State
   const [form, setForm] = useState({
@@ -164,6 +172,202 @@ export default function AddLibraryWizard() {
     }
   };
 
+  const handleUpiPay = async (appName) => {
+    const amount = selectedPlan === 'monthly' ? 499 : 4999;
+    
+    // Construct direct zero-commission UPI link
+    const payeeVpa = "libconnect@upi";
+    const payeeName = "LibConnect App Services";
+    const note = `LibConnect Pro ${selectedPlan === 'monthly' ? 'Monthly' : 'Yearly'} Plan`;
+    
+    let scheme = 'upi://pay';
+    let appDisplay = 'UPI App';
+    
+    if (appName === 'phonepe') { scheme = 'phonepe://pay'; appDisplay = 'PhonePe'; }
+    else if (appName === 'gpay') { scheme = 'tez://upi/pay'; appDisplay = 'Google Pay'; }
+    else if (appName === 'paytm') { scheme = 'paytmmp://pay'; appDisplay = 'Paytm'; }
+
+    const upiUrl = `${scheme}?pa=${payeeVpa}&pn=${encodeURIComponent(payeeName)}&am=${amount}&cu=INR&tn=${encodeURIComponent(note)}`;
+    
+    try {
+      await Linking.openURL(upiUrl);
+    } catch {
+      Alert.alert("App Not Found", `${appDisplay} is not installed on your phone. Please try another app.`);
+    }
+  };
+
+  const handleVerifyPayment = async () => {
+    if (utr.length !== 12) {
+      Alert.alert('Invalid UTR', 'Please enter a valid 12-digit UTR or Reference Number.');
+      return;
+    }
+    setLoading(true);
+    setTimeout(async () => {
+      setLoading(false);
+      setPaymentVerifying(false);
+      setVerified(true);
+      
+      const planName = selectedPlan === 'monthly' ? 'Pro Monthly' : 'Pro Yearly';
+      const days = selectedPlan === 'monthly' ? 30 : 365;
+      const subInfo = { name: planName, daysLeft: days, type: selectedPlan };
+      
+      setSubscriptionPlan(subInfo);
+      await AsyncStorage.setItem('@libconnect_subscription', JSON.stringify(subInfo));
+      
+      Alert.alert(
+        "Payment Verified! ✅", 
+        `Your ${planName} subscription is now active. You can proceed to list your library.`,
+        [{ text: "Continue", onPress: () => setStep(1) }]
+      );
+    }, 1500);
+  };
+
+  const handleFreeTrial = async () => {
+    const subInfo = { name: 'Basic - Free Trial', daysLeft: 30, type: 'trial' };
+    setSubscriptionPlan(subInfo);
+    await AsyncStorage.setItem('@libconnect_subscription', JSON.stringify(subInfo));
+    
+    Alert.alert(
+      "Free Trial Activated! 🎁", 
+      "Your 30-day Free Trial is active. Proceed to list your library.",
+      [{ text: "Continue", onPress: () => setStep(1) }]
+    );
+  };
+
+  const renderSubscriptionStep = () => (
+    <View style={s.stepContainer}>
+      <Text style={s.stepTitle}>Grow your library</Text>
+      <Text style={s.subText}>Students will come straight to your library</Text>
+      
+      {/* Monthly Card */}
+      <View style={s.subPlanCard}>
+        <View style={s.planHeaderRow}>
+          <Text style={s.planCardTitle}>Monthly Plan</Text>
+          <View style={s.trialBadge}><Text style={s.trialBadgeTxt}>30 days FREE trial</Text></View>
+        </View>
+        <Text style={s.planCardPrice}>₹499<Text style={{ fontSize: 14, fontWeight: 'normal', color: C.textGray }}>/month</Text></Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: -10, marginBottom: 16, gap: 8 }}>
+          <Text style={{ fontSize: 14, textDecorationLine: 'line-through', color: C.textGray }}>₹599/month</Text>
+          <View style={s.discountBadge}><Text style={s.discountBadgeTxt}>₹100 off</Text></View>
+        </View>
+        
+        <View style={s.bulletRow}><Ionicons name="checkmark-circle" size={16} color={C.primary} /><Text style={s.bulletText}>1 library listing on LibConnect</Text></View>
+        <View style={s.bulletRow}><Ionicons name="checkmark-circle" size={16} color={C.primary} /><Text style={s.bulletText}>Unlimited seat management</Text></View>
+        <View style={s.bulletRow}><Ionicons name="checkmark-circle" size={16} color={C.primary} /><Text style={s.bulletText}>Student tracking – name, seat, expiry</Text></View>
+        <View style={s.bulletRow}><Ionicons name="checkmark-circle" size={16} color={C.primary} /><Text style={s.bulletText}>Revenue dashboard</Text></View>
+        <View style={s.bulletRow}><Ionicons name="checkmark-circle" size={16} color={C.primary} /><Text style={s.bulletText}>WhatsApp reminders – expiry alert</Text></View>
+        <View style={s.bulletRow}><Ionicons name="checkmark-circle" size={16} color={C.primary} /><Text style={s.bulletText}>New booking notifications</Text></View>
+        <View style={s.bulletRow}><Ionicons name="checkmark-circle" size={16} color={C.primary} /><Text style={s.bulletText}>Students will book directly from the app</Text></View>
+        
+        <View style={{ marginTop: 16 }}>
+          <TouchableOpacity style={s.upiBtn} onPress={handleFreeTrial}>
+            <Text style={s.upiBtnTxt}>Start 30 Days Free Trial</Text>
+          </TouchableOpacity>
+          <Text style={s.subBtnText}>No card required - Pay later</Text>
+        </View>
+      </View>
+
+      {/* Yearly Card */}
+      <View style={[s.subPlanCard, { borderColor: C.primary, borderWidth: 1.5 }]}>
+        <View style={s.planHeaderRow}>
+          <Text style={s.planCardTitle}>Yearly Plan</Text>
+          <View style={[s.trialBadge, { backgroundColor: '#FEE2E2' }]}><Text style={[s.trialBadgeTxt, { color: '#DC2626' }]}>Best Value</Text></View>
+        </View>
+        <Text style={s.planCardPrice}>₹4,999<Text style={{ fontSize: 14, fontWeight: 'normal', color: C.textGray }}>/year</Text></Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: -10, marginBottom: 16, gap: 8 }}>
+          <Text style={{ fontSize: 14, textDecorationLine: 'line-through', color: C.textGray }}>₹5,990/year</Text>
+          <View style={s.discountBadge}><Text style={s.discountBadgeTxt}>₹991 off</Text></View>
+        </View>
+        
+        <View style={s.bulletRow}><Ionicons name="checkmark-circle" size={16} color={C.primary} /><Text style={s.bulletText}>1 library listing on LibConnect</Text></View>
+        <View style={s.bulletRow}><Ionicons name="checkmark-circle" size={16} color={C.primary} /><Text style={s.bulletText}>Unlimited seat management</Text></View>
+        <View style={s.bulletRow}><Ionicons name="checkmark-circle" size={16} color={C.primary} /><Text style={s.bulletText}>Student tracking – name, seat, expiry</Text></View>
+        <View style={s.bulletRow}><Ionicons name="checkmark-circle" size={16} color={C.primary} /><Text style={s.bulletText}>Revenue dashboard</Text></View>
+        <View style={s.bulletRow}><Ionicons name="checkmark-circle" size={16} color={C.primary} /><Text style={s.bulletText}>WhatsApp reminders – expiry alert</Text></View>
+        <View style={s.bulletRow}><Ionicons name="checkmark-circle" size={16} color={C.primary} /><Text style={s.bulletText}>New booking notifications</Text></View>
+        <View style={s.bulletRow}><Ionicons name="checkmark-circle" size={16} color={C.primary} /><Text style={s.bulletText}>Students will book directly from the app</Text></View>
+        
+        <View style={s.extraHighlightBox}>
+          <Text style={s.extraHighlightTxt}>2 extra months absolutely FREE</Text>
+          <Text style={{ fontSize: 11, color: '#0F6E56', marginTop: 2, fontWeight: '600' }}>Get 12 months for the price of 10</Text>
+        </View>
+
+        <View style={{ marginTop: 16 }}>
+          <TouchableOpacity style={s.upiBtn} onPress={() => { setSelectedPlan('yearly'); setPaymentVerifying(true); }}>
+            <Text style={s.upiBtnTxt}>Start Yearly Plan</Text>
+          </TouchableOpacity>
+          <Text style={s.subBtnText}>Save ₹991 + 2 Months Free</Text>
+        </View>
+      </View>
+    </View>
+  );
+
+  const renderVerification = () => (
+    <View style={s.stepContainer}>
+      <Text style={s.stepTitle}>Verify Payment 🔐</Text>
+      <Text style={s.subText}>
+        Complete your payment of ₹{selectedPlan === 'monthly' ? '499' : '4,999'} for the {selectedPlan === 'monthly' ? 'Monthly' : 'Yearly'} Pro subscription and enter your UTR to activate.
+      </Text>
+      
+      <View style={{ marginBottom: 24 }}>
+        <Text style={{ fontSize: 14, color: C.textDark, fontWeight: '700', marginBottom: 12 }}>Step 1: Pay directly via:</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 10 }}>
+          <TouchableOpacity style={[s.upiAppBtn, { backgroundColor: '#5F259F' }]} onPress={() => handleUpiPay('phonepe')}>
+            <Text style={s.upiAppBtnTxt}>PhonePe</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[s.upiAppBtn, { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1CFCA' }]} onPress={() => handleUpiPay('gpay')}>
+            <Text style={[s.upiAppBtnTxt, { color: '#1A73E8' }]}>GPay</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[s.upiAppBtn, { backgroundColor: '#002E6E' }]} onPress={() => handleUpiPay('paytm')}>
+            <Text style={s.upiAppBtnTxt}>Paytm</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+      
+      <View style={s.instructionBox}>
+        <Text style={s.instTitle}>Step 2: How to activate?</Text>
+        <View style={s.instRow}><Text style={s.instNum}>1</Text><Text style={s.instText}>Copy the 12-digit UTR (Reference ID) from your payment history.</Text></View>
+        <View style={s.instRow}><Text style={s.instNum}>2</Text><Text style={s.instText}>Paste the UTR number below to verify.</Text></View>
+      </View>
+      
+      <View style={s.utrContainer}>
+        <Text style={s.label}>12-Digit UTR Number</Text>
+        <TextInput
+          style={s.utrInput}
+          placeholder="e.g. 312345678901"
+          keyboardType="number-pad"
+          maxLength={12}
+          value={utr}
+          onChangeText={setUtr}
+        />
+      </View>
+      
+      <TouchableOpacity 
+        style={[s.verifyBtn, utr.length !== 12 && { opacity: 0.5 }]} 
+        onPress={handleVerifyPayment}
+        disabled={loading || utr.length !== 12}
+        activeOpacity={0.85}
+      >
+        {loading ? (
+          <ActivityIndicator color="#FFF" />
+        ) : (
+          <>
+            <Ionicons name="shield-checkmark" size={20} color="#FFF" style={{ marginRight: 6 }} />
+            <Text style={s.verifyBtnTxt}>Verify & Activate</Text>
+          </>
+        )}
+      </TouchableOpacity>
+      
+      <TouchableOpacity 
+        style={s.cancelVerBtn} 
+        onPress={() => { setPaymentVerifying(false); setUtr(''); }}
+        activeOpacity={0.8}
+      >
+        <Text style={s.cancelVerTxt}>Choose another plan</Text>
+      </TouchableOpacity>
+    </View>
+  );
+
   // UI Renderers
   const renderStep1 = () => (
     <View style={s.stepContainer}>
@@ -260,14 +464,21 @@ export default function AddLibraryWizard() {
         <TouchableOpacity onPress={() => router.back()} style={s.backBtn}>
           <Ionicons name="arrow-back" size={24} color={C.textDark} />
         </TouchableOpacity>
-        <View style={s.progressWrap}>
-          <View style={[s.progressBar, { width: `${(step / 3) * 100}%` }]} />
-        </View>
-        <Text style={s.stepInd}>{step}/3</Text>
+        {step > 0 ? (
+          <>
+            <View style={s.progressWrap}>
+              <View style={[s.progressBar, { width: `${(step / 3) * 100}%` }]} />
+            </View>
+            <Text style={s.stepInd}>{step}/3</Text>
+          </>
+        ) : (
+          <Text style={{ fontSize: 16, fontWeight: '700', color: C.textDark }}>Subscription Plan</Text>
+        )}
       </View>
 
       <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : 'height'}>
         <ScrollView contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
+          {step === 0 && (paymentVerifying ? renderVerification() : renderSubscriptionStep())}
           {step === 1 && renderStep1()}
           {step === 2 && renderStep2()}
           {step === 3 && renderStep3()}
@@ -275,24 +486,26 @@ export default function AddLibraryWizard() {
       </KeyboardAvoidingView>
 
       {/* Footer Buttons */}
-      <View style={[s.footer, { paddingBottom: insets.bottom || 20 }]}>
-        {step > 1 && (
-          <TouchableOpacity style={s.btnBack} onPress={() => setStep(s => s - 1)}>
-            <Text style={s.btnBackTxt}>Back</Text>
-          </TouchableOpacity>
-        )}
-        {step < 3 ? (
-          <TouchableOpacity style={s.btnNext} onPress={handleNext}>
-            <Text style={s.btnNextTxt}>Continue</Text>
-            <Ionicons name="arrow-forward" size={18} color="#FFF" />
-          </TouchableOpacity>
-        ) : (
-          <TouchableOpacity style={s.btnNext} onPress={handleSave} disabled={loading}>
-            <Text style={s.btnNextTxt}>{loading ? 'Saving...' : 'Publish Library'}</Text>
-            {!loading && <Ionicons name="checkmark" size={18} color="#FFF" />}
-          </TouchableOpacity>
-        )}
-      </View>
+      {step > 0 && (
+        <View style={[s.footer, { paddingBottom: insets.bottom || 20 }]}>
+          {step > 1 && (
+            <TouchableOpacity style={s.btnBack} onPress={() => setStep(s => s - 1)}>
+              <Text style={s.btnBackTxt}>Back</Text>
+            </TouchableOpacity>
+          )}
+          {step < 3 ? (
+            <TouchableOpacity style={s.btnNext} onPress={handleNext}>
+              <Text style={s.btnNextTxt}>Continue</Text>
+              <Ionicons name="arrow-forward" size={18} color="#FFF" />
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity style={s.btnNext} onPress={handleSave} disabled={loading}>
+              <Text style={s.btnNextTxt}>{loading ? 'Saving...' : 'Publish Library'}</Text>
+              {!loading && <Ionicons name="checkmark" size={18} color="#FFF" />}
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
     </View>
   );
 }
@@ -336,4 +549,104 @@ const s = StyleSheet.create({
   btnBackTxt: { fontSize: 16, fontWeight: '600', color: C.textDark },
   btnNext: { flex: 2, flexDirection: 'row', paddingVertical: 16, borderRadius: 14, backgroundColor: C.primary, alignItems: 'center', justifyContent: 'center', gap: 8 },
   btnNextTxt: { fontSize: 16, fontWeight: '700', color: '#FFF' },
+
+  // Subscription cards & verification view styles
+  subPlanCard: {
+    backgroundColor: C.surface,
+    borderRadius: 20,
+    padding: 20,
+    marginBottom: 20,
+    borderWidth: 1.5,
+    borderColor: C.border,
+  },
+  planHeaderRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 10 },
+  planCardTitle: { fontSize: 18, fontWeight: '800', color: C.textDark },
+  trialBadge: { backgroundColor: C.primaryLight, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12 },
+  trialBadgeTxt: { fontSize: 11, fontWeight: '700', color: C.primary },
+  planCardPrice: { fontSize: 28, fontWeight: '900', color: C.textDark, marginBottom: 16 },
+  bulletRow: { flexDirection: 'row', alignItems: 'flex-start', marginBottom: 10, gap: 8 },
+  bulletText: { fontSize: 13.5, color: C.textGray, fontWeight: '500', flex: 1, lineHeight: 18 },
+  upiBtn: {
+    flexDirection: 'row', backgroundColor: C.primary, paddingVertical: 14, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center', shadowColor: C.primary,
+    shadowOffset: { width: 0, height: 3 }, shadowOpacity: 0.15, shadowRadius: 5, elevation: 2,
+  },
+  upiBtnTxt: { color: '#FFF', fontSize: 15, fontWeight: '700' },
+  upiAppBtn: {
+    paddingVertical: 10,
+    paddingHorizontal: 8,
+    borderRadius: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    flex: 1,
+  },
+  upiAppBtnTxt: {
+    color: '#FFF',
+    fontSize: 14,
+    fontWeight: '700',
+  },
+  trialBtn: {
+    borderWidth: 1.5, borderColor: C.primary, paddingVertical: 12, borderRadius: 14,
+    alignItems: 'center', justifyContent: 'center', backgroundColor: 'transparent',
+  },
+  trialBtnTxt: { color: C.primary, fontSize: 14, fontWeight: '700' },
+  
+  // Verification Styles
+  instructionBox: {
+    backgroundColor: '#FFF8E1', borderRadius: 16, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: '#FFE082'
+  },
+  instTitle: { fontSize: 15, fontWeight: '700', color: '#B08D00', marginBottom: 12 },
+  instRow: { flexDirection: 'row', marginBottom: 10, gap: 10, paddingRight: 10 },
+  instNum: {
+    width: 20, height: 20, borderRadius: 10, backgroundColor: '#FFE082', color: '#B08D00',
+    fontSize: 12, fontWeight: '800', textAlign: 'center', lineHeight: 20, overflow: 'hidden'
+  },
+  instText: { fontSize: 13, color: '#5C4E0A', flex: 1, lineHeight: 18, fontWeight: '500' },
+  utrContainer: { marginBottom: 24 },
+  utrInput: {
+    backgroundColor: C.surface, borderWidth: 1.5, borderColor: C.border, borderRadius: 12,
+    padding: 16, fontSize: 18, fontWeight: '700', color: C.textDark, textAlign: 'center', letterSpacing: 2
+  },
+  verifyBtn: {
+    flexDirection: 'row', backgroundColor: C.primary, paddingVertical: 16, borderRadius: 16,
+    alignItems: 'center', justifyContent: 'center', gap: 8, shadowColor: C.primary,
+    shadowOffset: { width: 0, height: 4 }, shadowOpacity: 0.18, shadowRadius: 6, elevation: 3, marginBottom: 12
+  },
+  verifyBtnTxt: { color: '#FFF', fontSize: 16, fontWeight: '700' },
+  cancelVerBtn: { paddingVertical: 12, alignItems: 'center', justifyContent: 'center' },
+  cancelVerTxt: { color: C.textGray, fontSize: 14, fontWeight: '600', textDecorationLine: 'underline' },
+  subBtnText: {
+    fontSize: 12,
+    color: C.textGray,
+    marginTop: 6,
+    fontWeight: '600',
+    textAlign: 'center',
+  },
+  extraHighlightBox: {
+    backgroundColor: '#E8F5F0',
+    borderColor: '#9FE1CB',
+    borderWidth: 1,
+    borderRadius: 12,
+    paddingVertical: 10,
+    paddingHorizontal: 16,
+    marginTop: 10,
+    marginBottom: 6,
+    alignItems: 'center',
+  },
+  extraHighlightTxt: {
+    fontSize: 13,
+    fontWeight: '700',
+    color: '#0F6E56',
+  },
+  discountBadge: {
+    backgroundColor: '#E8F5F0',
+    paddingHorizontal: 8,
+    paddingVertical: 2,
+    borderRadius: 6,
+  },
+  discountBadgeTxt: {
+    fontSize: 11,
+    fontWeight: '700',
+    color: '#0F6E56',
+  },
 });

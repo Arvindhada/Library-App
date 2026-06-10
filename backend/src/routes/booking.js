@@ -108,8 +108,12 @@ router.post('/owner/add-student', protect, async (req, res, next) => {
       seat,
       shift,
       startDate: startDate || new Date(),
-      endDate: endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days default
-      status: 'Active'
+      endDate: endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
+      status: 'Active',
+      gender: req.body.gender || 'Male',
+      address: req.body.address || '',
+      fee: req.body.fee || 0,
+      admissionDate: req.body.admissionDate || new Date().toISOString().split('T')[0],
     });
 
     // 4. Update library available seats
@@ -119,10 +123,32 @@ router.post('/owner/add-student', protect, async (req, res, next) => {
       await library.save();
     }
 
-    res.status(201).json({ success: true, booking, message: 'Student added successfully' });
+    // 5. Return booking with student info populated
+    const populated = await Booking.findById(booking._id).populate('student', 'name phone');
+    res.status(201).json({ success: true, booking: populated, message: 'Student added successfully' });
   } catch (error) {
     next(error);
   }
+});
+
+// @route   DELETE /api/bookings/:id
+// @desc    Owner deletes/removes a student booking
+// @access  Private
+router.delete('/:id', protect, async (req, res, next) => {
+  try {
+    const booking = await Booking.findById(req.params.id);
+    if (!booking) { res.status(404); throw new Error('Booking not found'); }
+
+    // Restore seat count
+    const library = await Library.findById(booking.library);
+    if (library && booking.status === 'Active') {
+      library.available_seats = (library.available_seats || 0) + 1;
+      await library.save();
+    }
+
+    await Booking.findByIdAndDelete(req.params.id);
+    res.json({ success: true, message: 'Booking removed successfully' });
+  } catch (error) { next(error); }
 });
 
 module.exports = router;

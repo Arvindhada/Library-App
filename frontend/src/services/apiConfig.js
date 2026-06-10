@@ -1,11 +1,12 @@
 // API Configuration
-// For Local Development: 
-// Use your computer's IP address if testing on a real device, 
-// or 'http://localhost:8000/api' for emulator.
+// ─────────────────────────────────────────────
+// For Android Emulator:    BASE_URL = 'http://10.0.2.2:8000/api'
+// For iOS Simulator:       BASE_URL = 'http://localhost:8000/api'
+// For Real Physical Device: Replace with your computer's local WiFi IP
+//   e.g. 'http://192.168.1.5:8000/api'   (check with: ifconfig | grep "inet ")
+// ─────────────────────────────────────────────
 
-// For Android Emulator, use '10.0.2.2' instead of 'localhost'
-// For iOS Simulator or Web, 'localhost' is fine.
-const BASE_URL = 'http://10.0.2.2:8000/api'; 
+const BASE_URL = 'http://10.0.2.2:8000/api'; // Change to your local IP for real device
 
 export const API_ENDPOINTS = {
   LOGIN: `${BASE_URL}/auth/login`,

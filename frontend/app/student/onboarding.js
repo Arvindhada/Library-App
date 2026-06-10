@@ -56,7 +56,7 @@ export default function StudentOnboarding() {
         </View>
 
         <TouchableOpacity testID="lets-go-btn" style={s.btn} onPress={handleSubmit} activeOpacity={0.8}>
-          <Text style={s.btnText}>Let's Go!</Text>
+          <Text style={s.btnText}>{"Let's Go!"}</Text>
         </TouchableOpacity>
       </ScrollView>
     </KeyboardAvoidingView>

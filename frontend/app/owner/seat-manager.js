@@ -7,7 +7,6 @@ import {
   ScrollView, 
   TouchableOpacity, 
   FlatList, 
-  TextInput, 
   Alert, 
   KeyboardAvoidingView, 
   Platform, 
@@ -39,7 +38,6 @@ export default function SeatManager() {
   const { currentLibrary, currentBookings, fetchDashboardData, loading, vacateSeat } = useApp();
 
   const total = currentLibrary?.totalSeats || currentLibrary?.total_seats || 48;
-  const [totalInput, setTotalInput] = useState(String(total));
   const [selectedSeat, setSelectedSeat] = useState(null);
   const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'free' | 'occupied' | 'expiring'
   const [selectedShift, setSelectedShift] = useState(null); // null | 'Morning' | 'Evening' | 'Full Day'
@@ -48,7 +46,7 @@ export default function SeatManager() {
   const seats = useMemo(() => {
     const today = new Date();
     const arr = [];
-    const totalSeats = parseInt(totalInput, 10) || total || 48;
+    const totalSeats = total || 48;
     for (let i = 1; i <= totalSeats; i++) {
       // Find active booking for this seat
       const booking = currentBookings.find(
@@ -80,10 +78,11 @@ export default function SeatManager() {
         isFeeDue,
         isExpiring,
         bookingId: booking?._id,
+        booking: booking || null,
       });
     }
     return arr;
-  }, [totalInput, currentBookings, total]);
+  }, [currentBookings, total]);
 
   // Sync selected seat details after state change (e.g. vacating a seat)
   const currentSelectedSeatDetails = useMemo(() => {
@@ -126,14 +125,6 @@ export default function SeatManager() {
     return { morning, evening, fullDay };
   }, [seats]);
 
-  const handleGenerateGrid = () => {
-    const num = parseInt(totalInput, 10);
-    if (!num || num < 1 || num > 500) {
-      Alert.alert('Error', 'Enter a valid number (1-500)');
-      return;
-    }
-    setSelectedSeat(null);
-  };
 
   const handleWhatsAppAlert = (seat) => {
     const phone = seat.studentPhone;
@@ -169,7 +160,7 @@ export default function SeatManager() {
       [
         { text: 'Cancel', style: 'cancel' },
         { 
-          text: 'Free Karo', 
+          text: 'Vacate', 
           style: 'destructive',
           onPress: () => {
             vacateSeat(seat.number);
@@ -234,7 +225,7 @@ export default function SeatManager() {
               onPress={() => handleFilterSelect('all')}
             >
               <Text style={[s.filterText, activeFilter === 'all' && !selectedShift && s.filterTextActive]}>
-                Sab ({counts.all})
+                All ({counts.all})
               </Text>
             </TouchableOpacity>
 
@@ -335,9 +326,36 @@ export default function SeatManager() {
               <View style={s.detailsInfoBox}>
                 {currentSelectedSeatDetails.booked ? (
                   <>
-                    <View style={s.studentInfoRow}>
-                      <View>
-                        <Text style={s.studentName}>{currentSelectedSeatDetails.studentName}</Text>
+                    <TouchableOpacity 
+                      style={s.studentInfoRow}
+                      activeOpacity={0.7}
+                      onPress={() => {
+                        if (currentSelectedSeatDetails.booking) {
+                          const b = currentSelectedSeatDetails.booking;
+                          router.push({
+                            pathname: '/owner/student-profile',
+                            params: {
+                              id: b._id, 
+                              name: b.student?.name || 'Student',
+                              phone: b.student?.phone || '', 
+                              seat: b.seat,
+                              shift: b.shift, 
+                              status: b.status,
+                              endDate: b.endDate || '', 
+                              fee: b.fee || 0,
+                              gender: b.gender || '', 
+                              address: b.address || '',
+                              admissionDate: b.admissionDate || '',
+                            }
+                          });
+                        }
+                      }}
+                    >
+                      <View style={{ flex: 1 }}>
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+                          <Text style={s.studentName}>{currentSelectedSeatDetails.studentName}</Text>
+                          <Ionicons name="chevron-forward" size={16} color={C.textGray} />
+                        </View>
                         <Text style={s.studentSubtext}>
                           Seat {currentSelectedSeatDetails.label} • {currentSelectedSeatDetails.studentPlan} shift
                         </Text>
@@ -347,7 +365,7 @@ export default function SeatManager() {
                           {currentSelectedSeatDetails.isExpiring ? 'Expires today' : 'Active'}
                         </Text>
                       </View>
-                    </View>
+                    </TouchableOpacity>
 
                     <View style={s.actionBtnRow}>
                       <TouchableOpacity 
@@ -362,7 +380,7 @@ export default function SeatManager() {
                         style={s.freeBtn} 
                         onPress={() => handleVacateSeat(currentSelectedSeatDetails)}
                       >
-                        <Text style={s.freeBtnText}>Free Karo</Text>
+                        <Text style={s.freeBtnText}>Vacate Seat</Text>
                       </TouchableOpacity>
                     </View>
                   </>
@@ -420,22 +438,7 @@ export default function SeatManager() {
             </View>
           </View>
 
-          {/* ── CAPACITY ADJUSTMENT ── */}
-          <View style={s.capacityCard}>
-            <Text style={s.capacityLabel}>Total Capacity</Text>
-            <View style={s.capacityInputRow}>
-              <TextInput
-                style={s.capacityInput}
-                value={totalInput}
-                onChangeText={setTotalInput}
-                keyboardType="number-pad"
-                maxLength={3}
-              />
-              <TouchableOpacity style={s.updateBtn} onPress={handleGenerateGrid}>
-                <Text style={s.updateBtnText}>Update Capacity</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
+
 
         </ScrollView>
       </View>

@@ -36,7 +36,12 @@ const bookingSchema = new mongoose.Schema({
     type: String,
     enum: ['Pending', 'Paid'],
     default: 'Pending',
-  }
+  },
+  // Extra fields for owner-added students
+  gender: { type: String, default: 'Male' },
+  address: { type: String, default: '' },
+  fee: { type: Number, default: 0 },
+  admissionDate: { type: String, default: '' },
 }, { timestamps: true });
 
 bookingSchema.index({ library: 1, status: 1 });

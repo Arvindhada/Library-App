@@ -28,12 +28,13 @@ const C = {
   orange: '#C2410C',
   orangeLight: '#FFF3E8',
   orangeBorder: '#FDDCBB',
+  green: '#16A34A',
 };
 
 const DUMMY = [
-  { _id: '1', student: { name: 'Aman Sharma',  phone: '9876543210' }, seat: '12', shift: 'Full Time', status: 'Active',  endDate: '6/10/2026', fee: 1000 },
-  { _id: '2', student: { name: 'Priya Verma',  phone: '9123456789' }, seat: '5',  shift: 'Half Time', status: 'Pending', endDate: '1/1/2026',  fee: 600  },
-  { _id: '3', student: { name: 'Rahul Joshi',  phone: '9988776655' }, seat: '18', shift: 'Full Time', status: 'Active',  endDate: '5/4/2026',  fee: 1000 },
+  { _id: '1', student: { name: 'Aman Sharma',  phone: '9876543210' }, seat: '12', shift: 'Full Time', status: 'Active',  endDate: '2026-06-10T00:00:00Z', fee: 1000, gender: 'Male', address: '123, Sector 4, Mansarovar, Jaipur', admissionDate: '2026-05-10' },
+  { _id: '2', student: { name: 'Priya Verma',  phone: '9123456789' }, seat: '5',  shift: 'Half Time', status: 'Pending', endDate: '2024-01-01T00:00:00Z',  fee: 600, gender: 'Female', address: 'Plot 42, Vaishali Nagar, Jaipur', admissionDate: '2023-12-01'  },
+  { _id: '3', student: { name: 'Rahul Joshi',  phone: '9988776655' }, seat: '18', shift: 'Full Time', status: 'Active',  endDate: '2026-05-04T00:00:00Z',  fee: 1000, gender: 'Male', address: 'Tonk Road, Jaipur', admissionDate: '2026-04-04' },
 ];
 
 const FILTERS = ['All', 'Active', 'Due', 'Expired'];
@@ -78,6 +79,7 @@ export default function StudentsTab() {
       setIsEdit(false);
       setEditId(null);
       setAddModal(true);
+      router.setParams({ seat: undefined });
     }
   }, [seat]);
 
@@ -90,7 +92,8 @@ export default function StudentsTab() {
       const isDue  = exp < today;
       const isSoon = !isDue && exp <= soon;
       const fee = b.fee || (b.shift === 'Half Time' ? currentLibrary?.halfTime?.fee : currentLibrary?.fullTime?.fee) || 0;
-      return { ...b, student: b.student || { name: 'Student', phone: '' }, isDue, isSoon, fee };
+      const status = isDue ? 'Expired' : b.status;
+      return { ...b, student: b.student || { name: 'Student', phone: '' }, isDue, isSoon, status, fee };
     }), [currentBookings, currentLibrary]);
 
   const getInitials = (name) =>
@@ -167,6 +170,9 @@ export default function StudentsTab() {
           seat: form.seat,
           shift: form.plan,
           endDate: d.toISOString(),
+          gender: form.gender,
+          address: form.address,
+          admissionDate: form.date,
           fee: form.plan === 'Half Time' ? (currentLibrary?.halfTime?.fee || 600) : (currentLibrary?.fullTime?.fee || 1000)
         } : b));
       } else {
@@ -177,6 +183,9 @@ export default function StudentsTab() {
           shift: form.plan,
           status: 'Active',
           endDate: d.toISOString(),
+          gender: form.gender,
+          address: form.address,
+          admissionDate: form.date,
           fee: form.plan === 'Half Time' ? (currentLibrary?.halfTime?.fee || 600) : (currentLibrary?.fullTime?.fee || 1000)
         };
         setCurrentBookings(prev => [...prev, newStudent]);
@@ -220,7 +229,7 @@ export default function StudentsTab() {
   // Collect payment
   const openPay = (st) => {
     setSelStudent(st);
-    setPayForm({ amount: String(st.fee || ''), method: 'UPI' });
+    setPayForm({ amount: '', method: 'UPI' });
     setPayModal(true);
   };
   const handleCollect = async () => {
@@ -236,6 +245,20 @@ export default function StudentsTab() {
       } catch (backendErr) {
         console.warn('Backend payment save failed (offline?), continuing locally:', backendErr.message);
       }
+
+      // Update student's booking end date and status locally
+      // Extend from current expiry date (not today) so remaining days carry over
+      const currentExpiry = selStudent?.endDate ? new Date(selStudent.endDate) : new Date();
+      const baseDate = currentExpiry > new Date() ? currentExpiry : new Date();
+      const newEndDate = new Date(baseDate);
+      newEndDate.setDate(newEndDate.getDate() + 30);
+      
+      setCurrentBookings(prev => prev.map(b => b._id === selStudent._id ? {
+        ...b,
+        status: 'Active',
+        endDate: newEndDate.toISOString()
+      } : b));
+
       // Auto-add income entry to revenue — always runs even if backend is offline
       await addRevenueEntry({
         type: 'income',
@@ -249,7 +272,29 @@ export default function StudentsTab() {
       });
       setPayModal(false);
       fetchDashboardData();
-      Alert.alert('✅ Payment Recorded!', `₹${payForm.amount} via ${payForm.method} saved.`);
+      Alert.alert(
+        '✅ Payment Recorded!',
+        `₹${payForm.amount} via ${payForm.method} saved and booking renewed.`,
+        [
+          { 
+            text: 'Done', 
+            style: 'cancel',
+            onPress: () => {
+              setPayForm({ amount: '', method: 'UPI' });
+            }
+          },
+          {
+            text: 'Send WA Receipt',
+            onPress: () => {
+              const rawPhone = String(selStudent?.student?.phone || '').replace(/\D/g, '').replace(/^0+/, '').replace(/^91/, '');
+              const msg = `*LibConnect - Fee Receipt*\n\nDear *${selStudent?.student?.name || 'Student'}*,\nWe have successfully received your payment of *₹${payForm.amount}* via *${payForm.method}* for Seat Number *${selStudent?.seat || ''}*.\nYour booking has been renewed for 30 days.\n\nThank you!\n- Library Administration`;
+              Linking.openURL(`https://wa.me/91${rawPhone}?text=${encodeURIComponent(msg)}`);
+              setPayForm({ amount: '', method: 'UPI' });
+            }
+          }
+        ],
+        { cancelable: false }
+      );
     } catch (e) { Alert.alert('Error', e.response?.data?.message || e.message || 'Failed'); }
     finally { setSaving(false); }
   };
@@ -347,6 +392,8 @@ export default function StudentsTab() {
                   phone: st.student?.phone || '', seat: st.seat,
                   shift: st.shift, status: st.status,
                   endDate: st.endDate || '', fee: st.fee || 0,
+                  gender: st.gender || '', address: st.address || '',
+                  admissionDate: st.admissionDate || '',
                 }
               })}
             >
@@ -528,7 +575,10 @@ export default function StudentsTab() {
           <View style={s.modalBox}>
             <View style={s.modalHead}>
               <Text style={s.modalTitle}>Collect Payment</Text>
-              <TouchableOpacity onPress={() => setPayModal(false)}>
+              <TouchableOpacity onPress={() => {
+                setPayModal(false);
+                setPayForm({ amount: '', method: 'UPI' });
+              }}>
                 <Ionicons name="close" size={22} color={C.textGray} />
               </TouchableOpacity>
             </View>

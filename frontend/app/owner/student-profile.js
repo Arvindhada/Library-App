@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  StatusBar, Linking, Alert, ActivityIndicator, Modal
+  StatusBar, Linking, Alert, ActivityIndicator, Modal, TextInput
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +9,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { API_ENDPOINTS } from '../../src/services/apiConfig';
+import { useApp } from '../../src/context/AppContext';
 
 // ── Colors ──
 const C = {
@@ -30,25 +31,42 @@ export default function StudentProfile() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const params = useLocalSearchParams();
+  const { currentBookings, setCurrentBookings, addRevenueEntry, currentLibrary, revenueTransactions } = useApp();
 
-  // Parse student data from navigation params
-  const student = {
-    _id:      params.id       || '',
-    name:     params.name     || 'Student',
-    phone:    params.phone    || '',
-    seat:     params.seat     || '-',
-    shift:    params.shift    || '-',
-    status:   params.status   || 'Active',
-    endDate:  params.endDate  || '',
-    fee:      Number(params.fee) || 0,
-    joinDate: params.joinDate || '',
-  };
+  const studentId = params.id || '';
+  
+  // Find live booking from context
+  const booking = currentBookings.find(b => b._id === studentId);
+
+  // Derive values from booking context or parameters fallback robustly
+  const name = booking?.student?.name || params.name || 'Student';
+  const phone = booking?.student?.phone || params.phone || '';
+  const seat = booking?.seat || params.seat || '-';
+  const shift = booking?.shift || params.shift || '-';
+  const endDate = booking?.endDate || params.endDate || '';
+  const status = booking?.status || params.status || 'Active';
+  
+  // Fee fallback logic
+  const defaultFee = shift === 'Half Time' || shift === 'Morning' || shift === 'Evening' ? 600 : 1000;
+  const libraryFee = shift === 'Half Time' || shift === 'Morning' || shift === 'Evening'
+    ? currentLibrary?.halfTime?.fee 
+    : currentLibrary?.fullTime?.fee;
+  const fee = booking?.fee || Number(params.fee) || libraryFee || defaultFee;
+
+  const gender = booking?.gender || params.gender || 'Male';
+  const address = booking?.address || params.address || 'Mansarovar, Jaipur';
+  
+  // Calculate admission date if not provided
+  const calculatedAdmission = endDate && endDate !== '-'
+    ? new Date(new Date(endDate).setDate(new Date(endDate).getDate() - 30)).toISOString().split('T')[0]
+    : new Date().toISOString().split('T')[0];
+  const admissionDate = booking?.admissionDate || params.admissionDate || calculatedAdmission;
 
   const [payments, setPayments]   = useState([]);
   const [loadPay, setLoadPay]     = useState(true);
   const [payModal, setPayModal]   = useState(false);
   const [saving, setSaving]       = useState(false);
-  const [payForm, setPayForm]     = useState({ amount: String(student.fee), method: 'UPI' });
+  const [payForm, setPayForm]     = useState({ amount: '', method: 'UPI' });
 
   // Fetch payment history for this booking
   useEffect(() => {
@@ -59,16 +77,31 @@ export default function StudentProfile() {
     setLoadPay(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
-      const res = await axios.get(`${API_ENDPOINTS.PAYMENTS}?bookingId=${student._id}`, {
+      const res = await axios.get(`${API_ENDPOINTS.PAYMENTS}?bookingId=${studentId}`, {
         headers: { Authorization: `Bearer ${token}` }
       });
       setPayments(res.data?.payments || res.data || []);
     } catch (e) {
-      // Fallback dummy data if API not connected
-      setPayments([
-        { _id: 'p1', amount: student.fee, method: 'UPI',  date: new Date(Date.now() - 30*86400000).toISOString(), status: 'Paid' },
-        { _id: 'p2', amount: student.fee, method: 'Cash', date: new Date(Date.now() - 60*86400000).toISOString(), status: 'Paid' },
-      ]);
+      // Offline/Local fallback: filter payments from revenueTransactions
+      const localPayments = (revenueTransactions || [])
+        .filter(t => t.studentId === studentId && t.type === 'income')
+        .map(t => ({
+          _id: t.id,
+          amount: t.amount,
+          method: t.method,
+          date: t.createdAt || t.date,
+          status: 'Paid'
+        }));
+      
+      if (localPayments.length > 0) {
+        setPayments(localPayments);
+      } else {
+        // Fallback dummy data if no local payments exist yet
+        setPayments([
+          { _id: 'p1', amount: fee, method: 'UPI',  date: new Date(Date.now() - 30*86400000).toISOString(), status: 'Paid' },
+          { _id: 'p2', amount: fee, method: 'Cash', date: new Date(Date.now() - 60*86400000).toISOString(), status: 'Paid' },
+        ]);
+      }
     } finally {
       setLoadPay(false);
     }
@@ -80,27 +113,73 @@ export default function StudentProfile() {
     setSaving(true);
     try {
       const token = await AsyncStorage.getItem('userToken');
-      await axios.post(API_ENDPOINTS.PAYMENTS, {
-        bookingId: student._id,
-        amount:    parseInt(payForm.amount, 10),
-        method:    payForm.method,
-      }, { headers: { Authorization: `Bearer ${token}` } });
+      try {
+        await axios.post(API_ENDPOINTS.PAYMENTS, {
+          bookingId: studentId,
+          amount:    parseInt(payForm.amount, 10),
+          method:    payForm.method,
+        }, { headers: { Authorization: `Bearer ${token}` }, timeout: 5000 });
+      } catch (backendErr) {
+        console.warn('Backend payment save failed (offline?), continuing locally:', backendErr.message);
+      }
+
+      // Renew student locally in global context
+      const today = new Date();
+      const isExpired = endDate && endDate !== '-' ? new Date(endDate) < today : true;
+      const baseDate = isExpired ? today : new Date(endDate);
+      
+      const collectedAmount = parseInt(payForm.amount, 10) || fee || 1000;
+      const monthsPaid = Math.max(1, Math.round(collectedAmount / (fee || 1000)));
+      const daysToAdd = monthsPaid * 30;
+
+      const newEndDate = new Date(baseDate.getTime());
+      newEndDate.setDate(newEndDate.getDate() + daysToAdd);
+      
+      setCurrentBookings(prev => prev.map(b => b._id === studentId ? {
+        ...b,
+        status: 'Active',
+        endDate: newEndDate.toISOString()
+      } : b));
+
+      // Auto-add income entry to revenue
+      await addRevenueEntry({
+        type: 'income',
+        category: 'due_collection',
+        amount: parseInt(payForm.amount, 10),
+        shift: shift || null,
+        studentName: name || null,
+        studentId: studentId || null,
+        method: payForm.method,
+        note: `Fee collected — Seat ${seat || ''}`,
+      });
 
       setPayModal(false);
-      Alert.alert('✅ Payment Recorded!', `₹${payForm.amount} via ${payForm.method} saved.\nSeat renewed for 30 days.`);
+      Alert.alert(
+        '✅ Payment Recorded!',
+        `₹${payForm.amount} via ${payForm.method} saved.\nSeat renewed for 30 days.`,
+        [
+          { 
+            text: 'Done', 
+            style: 'cancel',
+            onPress: () => {
+              setPayForm({ amount: '', method: 'UPI' });
+            }
+          },
+          {
+            text: 'Send WA Receipt',
+            onPress: () => {
+              const rawPhone = String(phone || '').replace(/\D/g, '').replace(/^0+/, '').replace(/^91/, '');
+              const msg = `*LibConnect - Fee Receipt*\n\nDear *${name}*,\nWe have successfully received your payment of *₹${payForm.amount}* via *${payForm.method}* for Seat Number *${seat}*.\nYour booking has been renewed for 30 days.\n\nThank you!\n- Library Administration`;
+              Linking.openURL(`https://wa.me/91${rawPhone}?text=${encodeURIComponent(msg)}`);
+              setPayForm({ amount: '', method: 'UPI' });
+            }
+          }
+        ],
+        { cancelable: false }
+      );
       fetchPayments(); // Refresh history
     } catch (e) {
-      // Show in history even if API fails (offline mode)
-      const newPay = {
-        _id: Date.now().toString(),
-        amount: parseInt(payForm.amount, 10),
-        method: payForm.method,
-        date: new Date().toISOString(),
-        status: 'Paid',
-      };
-      setPayments(prev => [newPay, ...prev]);
-      setPayModal(false);
-      Alert.alert('✅ Saved Locally', `₹${payForm.amount} recorded. Will sync when connected.`);
+      Alert.alert('Error', e.message || 'Could not renew payment.');
     } finally {
       setSaving(false);
     }
@@ -108,22 +187,26 @@ export default function StudentProfile() {
 
   const totalPaid = payments.reduce((acc, p) => acc + (p.amount || 0), 0);
 
-  const getInitials = (name) =>
-    name ? name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) : 'S';
+  const getInitials = (n) =>
+    n ? n.split(' ').map(x => x[0]).join('').toUpperCase().substring(0, 2) : 'S';
 
   const fmtDate = (d) => {
+    if (!d || d === '-' || d === 'Invalid Date') return '-';
     try {
-      return new Date(d).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
-    } catch { return d; }
+      const date = new Date(d);
+      if (isNaN(date.getTime())) return '-';
+      return date.toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' });
+    } catch { return '-'; }
   };
 
-  const isDue = student.status === 'Pending' || (student.endDate && new Date(student.endDate) < new Date());
+  const today = new Date();
+  const isDue = status === 'Expired' || status === 'Pending' || (endDate && new Date(endDate) < today);
 
   const chipStyle = () => {
-    if (isDue)                       return { bg: '#FEE2E2', border: '#FCA5A5', text: C.red,    label: 'Fee Due' };
-    if (student.status === 'Active') return { bg: '#DCFCE7', border: '#86EFAC', text: '#166534', label: 'Active' };
-    if (student.status === 'Expired')return { bg: C.orangeLight, border: C.orangeBorder, text: C.orange, label: 'Expired' };
-    return                                  { bg: C.primaryLight, border: C.primaryBorder, text: C.primary, label: student.status };
+    if (isDue)                       return { bg: '#FEE2E2', border: '#FCA5A5', text: C.red,    label: 'Expired / Due' };
+    if (status === 'Active') return { bg: '#DCFCE7', border: '#86EFAC', text: '#166534', label: 'Active' };
+    if (status === 'Expired')return { bg: C.orangeLight, border: C.orangeBorder, text: C.orange, label: 'Expired' };
+    return                                  { bg: C.primaryLight, border: C.primaryBorder, text: C.primary, label: status };
   };
   const chip = chipStyle();
 
@@ -146,19 +229,19 @@ export default function StudentProfile() {
         <View style={s.profileCard}>
           <View style={s.profileTop}>
             {/* Big Avatar */}
-            <View style={[s.bigAva, isDue && { backgroundColor: '#FCA5A5' }]}>
-              <Text style={[s.bigAvaTxt, isDue && { color: C.red }]}>{getInitials(student.name)}</Text>
+            <View style={[s.bigAva, isDue && { backgroundColor: '#FCA5A5', borderColor: C.redBorder }]}>
+              <Text style={[s.bigAvaTxt, isDue && { color: C.red }]}>{getInitials(name)}</Text>
             </View>
             <View style={{ flex: 1 }}>
               <View style={s.nameRow}>
-                <Text style={s.stName}>{student.name}</Text>
+                <Text style={s.stName}>{name}</Text>
                 <View style={[s.chip, { backgroundColor: chip.bg, borderColor: chip.border }]}>
                   <Text style={[s.chipTxt, { color: chip.text }]}>{chip.label}</Text>
                 </View>
               </View>
               <View style={s.infoRow}>
                 <Ionicons name="call-outline" size={14} color={C.textGray} />
-                <Text style={s.infoTxt}>{student.phone || 'No phone'}</Text>
+                <Text style={s.infoTxt}>{phone || 'No phone'}</Text>
               </View>
             </View>
           </View>
@@ -168,21 +251,50 @@ export default function StudentProfile() {
             <View style={s.detailItem}>
               <Ionicons name="location-outline" size={14} color={C.primary} />
               <Text style={s.detailLabel}>Seat</Text>
-              <Text style={s.detailVal}>{student.seat}</Text>
+              <Text style={s.detailVal}>{seat}</Text>
             </View>
             <View style={s.divider} />
             <View style={s.detailItem}>
               <Ionicons name="time-outline" size={14} color={C.primary} />
               <Text style={s.detailLabel}>Shift</Text>
-              <Text style={s.detailVal}>{student.shift}</Text>
+              <Text style={s.detailVal}>{shift}</Text>
             </View>
             <View style={s.divider} />
             <View style={s.detailItem}>
               <Ionicons name="calendar-outline" size={14} color={C.primary} />
               <Text style={s.detailLabel}>Expires</Text>
               <Text style={[s.detailVal, isDue && { color: C.red }]}>
-                {student.endDate ? fmtDate(student.endDate) : '-'}
+                {endDate ? fmtDate(endDate) : '-'}
               </Text>
+            </View>
+          </View>
+        </View>
+
+        {/* ── REGISTRATION DETAILS CARD ── */}
+        <View style={s.profileCard}>
+          <Text style={s.secTitle}>Registration Details</Text>
+          <View style={{ marginTop: 14, gap: 12 }}>
+            <View style={s.metaRow}>
+              <Text style={s.metaLabel}>Join Date</Text>
+              <Text style={s.metaVal}>{admissionDate ? fmtDate(admissionDate) : '-'}</Text>
+            </View>
+            <View style={s.metaDivider} />
+
+            <View style={s.metaRow}>
+              <Text style={s.metaLabel}>Gender</Text>
+              <Text style={s.metaVal}>{gender}</Text>
+            </View>
+            <View style={s.metaDivider} />
+            
+            <View style={s.metaRow}>
+              <Text style={s.metaLabel}>Monthly Fee</Text>
+              <Text style={s.metaVal}>₹{fee.toLocaleString('en-IN')}</Text>
+            </View>
+            <View style={s.metaDivider} />
+
+            <View style={s.metaRow}>
+              <Text style={s.metaLabel}>Address</Text>
+              <Text style={s.metaVal}>{address}</Text>
             </View>
           </View>
         </View>
@@ -199,23 +311,30 @@ export default function StudentProfile() {
           </View>
           <View style={[s.sumBox, isDue && { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' }]}>
             <Text style={[s.sumLbl, isDue && { color: '#991B1B' }]}>Monthly Fee</Text>
-            <Text style={[s.sumVal, isDue && { color: C.red }]}>₹{student.fee.toLocaleString('en-IN')}</Text>
+            <Text style={[s.sumVal, isDue && { color: C.red }]}>₹{fee.toLocaleString('en-IN')}</Text>
           </View>
         </View>
 
         {/* ── ACTION BUTTONS ── */}
         <View style={s.actionRow}>
-          <TouchableOpacity style={s.collectBtn} onPress={() => setPayModal(true)} activeOpacity={0.85}>
+          <TouchableOpacity 
+            style={s.collectBtn} 
+            onPress={() => {
+              setPayForm({ amount: '', method: 'UPI' });
+              setPayModal(true);
+            }} 
+            activeOpacity={0.85}
+          >
             <Ionicons name="cash-outline" size={16} color="#FFF" />
-            <Text style={s.collectTxt}>Collect / Renew ₹{student.fee}</Text>
+            <Text style={s.collectTxt}>Collect / Renew ₹{fee}</Text>
           </TouchableOpacity>
           <TouchableOpacity
             style={s.waBtn}
             onPress={() => {
-              const rawPhone = String(student.phone || '').replace(/\D/g, '').replace(/^0+/, '').replace(/^91/, '');
+              const rawPhone = String(phone || '').replace(/\D/g, '').replace(/^0+/, '').replace(/^91/, '');
               const msg = isDue
-                ? `Hi ${student.name}, aapka library fee ₹${student.fee} due hai. Please jaldi renew karein. - Library`
-                : `Hi ${student.name}, aapka library seat active hai. Koi bhi help ke liye humse contact karein. - Library`;
+                ? `Hi ${name}, aapka library fee ₹${fee} due hai. Please jaldi renew karein. - Library`
+                : `Hi ${name}, aapka library seat active hai. Koi bhi help ke liye humse contact karein. - Library`;
               Linking.openURL(`https://wa.me/91${rawPhone}?text=${encodeURIComponent(msg)}`);
             }}
             activeOpacity={0.8}
@@ -241,7 +360,6 @@ export default function StudentProfile() {
         ) : (
           payments.map((p, idx) => (
             <View key={p._id || idx} style={s.payCard}>
-              {/* Left: icon + date */}
               <View style={[s.payIcon, { backgroundColor: p.status === 'Missed' ? '#FEE2E2' : C.primaryLight }]}>
                 <Ionicons
                   name={p.status === 'Missed' ? 'close-circle-outline' : 'checkmark-circle-outline'}
@@ -277,27 +395,25 @@ export default function StudentProfile() {
             <View style={s.modalHead}>
               <View>
                 <Text style={s.modalTitle}>Collect Payment</Text>
-                <Text style={s.modalSub}>for {student.name}</Text>
+                <Text style={s.modalSub}>for {name}</Text>
               </View>
-              <TouchableOpacity onPress={() => setPayModal(false)}>
+              <TouchableOpacity onPress={() => {
+                setPayModal(false);
+                setPayForm({ amount: '', method: 'UPI' });
+              }}>
                 <Ionicons name="close" size={22} color={C.textGray} />
               </TouchableOpacity>
             </View>
 
             <Text style={s.lbl}>Amount (₹)</Text>
-            <View style={s.amtRow}>
-              {[student.fee, Math.round(student.fee * 3), Math.round(student.fee * 6)].map(amt => (
-                <TouchableOpacity
-                  key={amt}
-                  style={[s.amtChip, payForm.amount === String(amt) && s.amtChipActive]}
-                  onPress={() => setPayForm(p => ({ ...p, amount: String(amt) }))}
-                >
-                  <Text style={[s.amtChipTxt, payForm.amount === String(amt) && { color: '#FFF' }]}>
-                    ₹{amt.toLocaleString('en-IN')}
-                  </Text>
-                </TouchableOpacity>
-              ))}
-            </View>
+            <TextInput
+              style={s.inp}
+              keyboardType="numeric"
+              value={payForm.amount}
+              onChangeText={v => setPayForm(p => ({ ...p, amount: v }))}
+              placeholder="Enter amount"
+              placeholderTextColor={C.textGray}
+            />
 
             <Text style={s.lbl}>Payment Method</Text>
             <View style={s.planRow}>
@@ -350,11 +466,6 @@ const s = StyleSheet.create({
     justifyContent: 'center', alignItems: 'center',
   },
   topTitle: { color: C.textDark, fontSize: 17, fontWeight: '700' },
-  waTopBtn: {
-    width: 40, height: 40, borderRadius: 12,
-    backgroundColor: '#DCFCE7', borderWidth: 0.5, borderColor: '#86EFAC',
-    justifyContent: 'center', alignItems: 'center',
-  },
 
   // Profile Card
   profileCard: {
@@ -408,6 +519,12 @@ const s = StyleSheet.create({
   secHeader: { marginBottom: 12 },
   secTitle: { color: C.textDark, fontSize: 16, fontWeight: '700' },
 
+  // Registration details row style
+  metaRow: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' },
+  metaLabel: { fontSize: 14, color: C.textGray, fontWeight: '500' },
+  metaVal: { fontSize: 14, color: C.textDark, fontWeight: '700', textAlign: 'right', flex: 1, marginLeft: 20 },
+  metaDivider: { height: 0.5, backgroundColor: C.border, marginVertical: 4 },
+
   // Payment card
   payCard: {
     flexDirection: 'row', alignItems: 'center', gap: 12,
@@ -431,6 +548,18 @@ const s = StyleSheet.create({
   modalHead: { flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 20 },
   modalTitle: { color: C.textDark, fontSize: 20, fontWeight: '700' },
   modalSub: { color: C.textGray, fontSize: 13, marginTop: 2 },
+  inp: { 
+    backgroundColor: C.bg, 
+    borderRadius: 12, 
+    borderWidth: 1, 
+    borderColor: C.border, 
+    paddingHorizontal: 14, 
+    paddingVertical: 12, 
+    fontSize: 16, 
+    color: C.textDark, 
+    marginBottom: 16,
+    fontWeight: '600',
+  },
 
   lbl: { color: C.textGray, fontSize: 13, fontWeight: '600', marginBottom: 8, marginTop: 4 },
   amtRow: { flexDirection: 'row', gap: 8, marginBottom: 16 },

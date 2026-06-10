@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Linking } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../../../src/context/AppContext';
@@ -7,9 +7,35 @@ import { useApp } from '../../../src/context/AppContext';
 
 export default function StudentBookings() {
   const router = useRouter();
-  const { libraries, savedLibraryIds, theme: tColors } = useApp();
+  const { libraries, savedLibraryIds, theme: tColors, studentData, currentBookings, currentLibrary } = useApp();
   const saved = libraries.filter((l) => savedLibraryIds.includes(l.id));
   const [activeTab, setActiveTab] = useState('bookings'); // 'bookings' | 'saved'
+
+  // Find if there is an active booking for this student in currentBookings
+  const liveBooking = currentBookings?.find(
+    b => (studentData?.phone && String(b.student?.phone).replace(/\D/g, '') === String(studentData?.phone).replace(/\D/g, '')) || 
+         (studentData?.name && b.student?.name?.toLowerCase() === studentData?.name?.toLowerCase())
+  );
+
+  const activeBooking = liveBooking ? {
+    libraryName: currentLibrary?.name || 'Your Library',
+    slot: liveBooking.shift,
+    expiryDate: new Date(liveBooking.endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
+    seatNo: liveBooking.seat,
+    status: liveBooking.status,
+    image: currentLibrary?.photos?.[0] || libraries[0]?.photos?.[0] || 'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=600&q=80',
+    ownerPhone: currentLibrary?.phone || '9988378077',
+    joinedDate: liveBooking.admissionDate ? new Date(liveBooking.admissionDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '15 May, 2026',
+  } : {
+    libraryName: 'The Study Point Library',
+    slot: 'Morning Slot (6 AM - 2 PM)',
+    expiryDate: '15 June, 2026',
+    seatNo: 'B-14',
+    status: 'Active',
+    image: libraries[0]?.photos?.[0] || 'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=600&q=80',
+    ownerPhone: '9988378077',
+    joinedDate: '15 May, 2026',
+  };
 
   const s = StyleSheet.create({
     container: { flex: 1, backgroundColor: tColors.bg },
@@ -70,16 +96,6 @@ export default function StudentBookings() {
     browseBtnText: { color: '#FFF', fontSize: 15, fontWeight: '700' },
   });
 
-  // Dummy active booking for demo
-  const activeBooking = {
-    libraryName: 'The Study Point Library',
-    slot: 'Morning Slot (6 AM - 2 PM)',
-    expiryDate: '15 June, 2026',
-    seatNo: 'B-14',
-    status: 'Active',
-    image: libraries[0]?.photos?.[0] || 'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=600&q=80',
-  };
-
   return (
     <View style={s.container}>
       <View style={s.header}>
@@ -119,7 +135,7 @@ export default function StudentBookings() {
                   <View style={s.dateRow}>
                     <View style={s.dateBox}>
                       <Text style={s.dateLabel}>Joined On</Text>
-                      <Text style={s.dateValue}>15 May, 2026</Text>
+                      <Text style={s.dateValue}>{activeBooking.joinedDate}</Text>
                     </View>
                     <View style={s.dateDivider} />
                     <View style={s.dateBox}>
@@ -131,11 +147,28 @@ export default function StudentBookings() {
               </View>
               
               <View style={s.ticketFooter}>
-                <TouchableOpacity style={s.actionBtn}>
+                <TouchableOpacity 
+                  style={s.actionBtn}
+                  onPress={() => {
+                    Alert.alert(
+                      'Fee Receipt 📄',
+                      `LibConnect - Official Slip\n\nLibrary: ${activeBooking.libraryName}\nSeat: ${activeBooking.seatNo}\nShift: ${activeBooking.slot}\nStatus: ${activeBooking.status}\nExpiry: ${activeBooking.expiryDate}\n\nThank you for choosing our library!`,
+                      [{ text: 'Close', style: 'cancel' }]
+                    );
+                  }}
+                  activeOpacity={0.8}
+                >
                   <Ionicons name="document-text-outline" size={16} color={tColors.primary} />
                   <Text style={s.actionBtnText}>Fee Receipt</Text>
                 </TouchableOpacity>
-                <TouchableOpacity style={s.actionBtnOutline}>
+                <TouchableOpacity 
+                  style={s.actionBtnOutline}
+                  onPress={() => {
+                    const rawOwnerPhone = String(activeBooking.ownerPhone).replace(/\D/g, '').replace(/^0+/, '').replace(/^91/, '');
+                    Linking.openURL(`https://wa.me/91${rawOwnerPhone}?text=${encodeURIComponent('Hi, I need help with my seat booking.')}`);
+                  }}
+                  activeOpacity={0.8}
+                >
                   <Ionicons name="chatbubbles-outline" size={16} color={tColors.primary} />
                   <Text style={s.actionBtnOutlineText}>Message Owner</Text>
                 </TouchableOpacity>

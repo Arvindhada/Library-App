@@ -24,7 +24,14 @@ const tColors = {
 
 export default function OwnerHome() {
   const router = useRouter();
-  const { ownerData, libraries, currentLibrary, fetchDashboardData } = useApp();
+  const { ownerData, libraries, currentLibrary, fetchDashboardData, currentBookings, setCurrentBookings } = useApp();
+  
+  // Compute real stats from libraries
+  const totalLibraries = libraries.length;
+  const totalFreeSeats = libraries.reduce((a, l) => a + (l.available_seats || l.vacantSeats || 0), 0);
+  const minFee = libraries.length > 0
+    ? Math.min(...libraries.map(l => l.halfTime?.fee || l.half_time_fee || 0).filter(f => f > 0))
+    : 0;
   
   // Notification states moved from dashboard
   const [notifModal, setNotifModal] = useState(false);
@@ -58,17 +65,43 @@ export default function OwnerHome() {
 
   const handleAccept = async (req) => {
     setActionId(req._id);
+    
+    // Default: Start with a 2-day Demo (Unpaid / Pending status)
+    const d = new Date();
+    d.setDate(d.getDate() + 2); // 2 Days Demo limit
+    
+    const newStudentBooking = {
+      _id: req._id || 'local-req-' + Date.now(),
+      student: { 
+        name: req.student?.name || 'Student', 
+        phone: req.student?.phone || '' 
+      },
+      seat: req.seat || 'N/A',
+      shift: req.shift || 'Full Time',
+      status: 'Pending', // 'Pending' means Demo/Fee Due
+      endDate: d.toISOString(),
+      gender: req.student?.gender || 'Male',
+      address: req.student?.address || 'Jaipur',
+      admissionDate: new Date().toISOString().split('T')[0],
+      fee: req.fee || (req.shift === 'Half Time' ? (currentLibrary?.halfTime?.fee || 600) : (currentLibrary?.fullTime?.fee || 1000))
+    };
+
     try {
       const token = await AsyncStorage.getItem('userToken');
       await axios.put(`${API_ENDPOINTS.BOOKINGS}/${req._id}/accept`, {}, {
-        headers: { Authorization: `Bearer ${token}` }
+        headers: { Authorization: `Bearer ${token}` }, timeout: 5000
       });
+      
+      // Add to global current bookings
+      setCurrentBookings(prev => [...prev, newStudentBooking]);
       setJoinRequests(prev => prev.filter(r => r._id !== req._id));
       if (fetchDashboardData) fetchDashboardData();
-      Alert.alert('Accepted ✅', `${req.student?.name} is now added to your student list.`);
+      Alert.alert('Accepted ✅', `${req.student?.name || 'Student'} has been added as a 2-Day Demo. Collect fee to activate.`);
     } catch {
-      Alert.alert('Done (Demo) ✅', `${req.student?.name} is now added to your student list.`);
+      // Offline/Demo fallback
+      setCurrentBookings(prev => [...prev, newStudentBooking]);
       setJoinRequests(prev => prev.filter(r => r._id !== req._id));
+      Alert.alert('Done (Demo) ✅', `${req.student?.name || 'Student'} has been added as a 2-Day Demo. Collect fee to activate.`);
     } finally {
       setActionId(null);
     }
@@ -159,18 +192,18 @@ export default function OwnerHome() {
         {/* Stats Row */}
         <View style={s.statsRow}>
           <View style={s.statBox}>
-            <Text style={s.statVal}>47</Text>
+            <Text style={s.statVal}>{totalLibraries}</Text>
             <Text style={s.statLabel}>Libraries</Text>
           </View>
           <View style={s.statDivider} />
           <View style={s.statBox}>
-            <Text style={s.statVal}>312</Text>
+            <Text style={s.statVal}>{totalFreeSeats}</Text>
             <Text style={s.statLabel}>Seats free</Text>
           </View>
           <View style={s.statDivider} />
           <View style={s.statBox}>
-            <Text style={s.statVal}>₹300</Text>
-            <Text style={s.statLabel}>Min/day</Text>
+            <Text style={s.statVal}>{minFee > 0 ? `₹${minFee}` : '--'}</Text>
+            <Text style={s.statLabel}>Min/month</Text>
           </View>
         </View>
 
