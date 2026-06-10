@@ -86,3 +86,16 @@ memory/test_credentials.md
 # Mobile development
 android-sdk/-e 
 .credentials
+
+# Expo / React Native cache (DO NOT commit these)
+frontend/.metro-cache/
+frontend/.expo/
+frontend/android/
+frontend/ios/
+frontend/.gradle/
+*.apk
+*.aab
+*.ipa
+
+# Backend env (sensitive)
+backend/.env
