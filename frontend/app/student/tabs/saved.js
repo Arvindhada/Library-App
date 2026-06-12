@@ -12,10 +12,12 @@ export default function StudentBookings() {
   const [activeTab, setActiveTab] = useState('bookings'); // 'bookings' | 'saved'
 
   // Find if there is an active booking for this student in currentBookings
-  const liveBooking = currentBookings?.find(
-    b => (studentData?.phone && String(b.student?.phone).replace(/\D/g, '') === String(studentData?.phone).replace(/\D/g, '')) || 
-         (studentData?.name && b.student?.name?.toLowerCase() === studentData?.name?.toLowerCase())
-  );
+  const liveBooking = currentBookings?.find(b => {
+    const studentPhone = String(b.student?.phone || '').replace(/\D/g, '').slice(-10);
+    const myPhone = String(studentData?.phone || '').replace(/\D/g, '').slice(-10);
+    return (studentPhone && studentPhone === myPhone && studentPhone.length === 10) ||
+           (studentData?.name && b.student?.name?.toLowerCase() === studentData?.name?.toLowerCase());
+  });
 
   const activeBooking = liveBooking ? {
     libraryName: currentLibrary?.name || 'Your Library',
@@ -26,16 +28,7 @@ export default function StudentBookings() {
     image: currentLibrary?.photos?.[0] || libraries[0]?.photos?.[0] || 'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=600&q=80',
     ownerPhone: currentLibrary?.phone || '9988378077',
     joinedDate: liveBooking.admissionDate ? new Date(liveBooking.admissionDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '15 May, 2026',
-  } : {
-    libraryName: 'The Study Point Library',
-    slot: 'Morning Slot (6 AM - 2 PM)',
-    expiryDate: '15 June, 2026',
-    seatNo: 'B-14',
-    status: 'Active',
-    image: libraries[0]?.photos?.[0] || 'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=600&q=80',
-    ownerPhone: '9988378077',
-    joinedDate: '15 May, 2026',
-  };
+  } : null;
 
   const s = StyleSheet.create({
     container: { flex: 1, backgroundColor: tColors.bg },
@@ -116,65 +109,76 @@ export default function StudentBookings() {
         
         {activeTab === 'bookings' ? (
           // ACTIVE BOOKINGS VIEW
-          <View>
-            <View style={s.ticketCard}>
-              <View style={s.ticketHeader}>
-                <View style={s.statusPill}>
-                  <View style={s.statusDot} />
-                  <Text style={s.statusText}>{activeBooking.status}</Text>
+          !activeBooking ? (
+            <View style={s.empty}>
+              <Ionicons name="calendar-outline" size={64} color="#D1D5DB" />
+              <Text style={s.emptyTitle}>No active bookings</Text>
+              <Text style={s.emptySub}>Aapka koi active seat booking nahi mila. Apne library owner se booking add karne ko kahein ya new library explore karein.</Text>
+              <TouchableOpacity style={s.browseBtn} onPress={() => router.push('/student/tabs/home')}>
+                <Text style={s.browseBtnText}>Explore Libraries</Text>
+              </TouchableOpacity>
+            </View>
+          ) : (
+            <View>
+              <View style={s.ticketCard}>
+                <View style={s.ticketHeader}>
+                  <View style={s.statusPill}>
+                    <View style={s.statusDot} />
+                    <Text style={s.statusText}>{activeBooking.status}</Text>
+                  </View>
+                  <Text style={s.seatText}>Seat: {activeBooking.seatNo}</Text>
                 </View>
-                <Text style={s.seatText}>Seat: {activeBooking.seatNo}</Text>
-              </View>
-              
-              <View style={s.ticketBody}>
-                <Image source={{ uri: activeBooking.image }} style={s.ticketImage} />
-                <View style={s.ticketInfo}>
-                  <Text style={s.libName} numberOfLines={1}>{activeBooking.libraryName}</Text>
-                  <Text style={s.slotText}>{activeBooking.slot}</Text>
-                  
-                  <View style={s.dateRow}>
-                    <View style={s.dateBox}>
-                      <Text style={s.dateLabel}>Joined On</Text>
-                      <Text style={s.dateValue}>{activeBooking.joinedDate}</Text>
-                    </View>
-                    <View style={s.dateDivider} />
-                    <View style={s.dateBox}>
-                      <Text style={s.dateLabel}>Expires On</Text>
-                      <Text style={[s.dateValue, { color: '#DC2626' }]}>{activeBooking.expiryDate}</Text>
+                
+                <View style={s.ticketBody}>
+                  <Image source={{ uri: activeBooking.image }} style={s.ticketImage} />
+                  <View style={s.ticketInfo}>
+                    <Text style={s.libName} numberOfLines={1}>{activeBooking.libraryName}</Text>
+                    <Text style={s.slotText}>{activeBooking.slot}</Text>
+                    
+                    <View style={s.dateRow}>
+                      <View style={s.dateBox}>
+                        <Text style={s.dateLabel}>Joined On</Text>
+                        <Text style={s.dateValue}>{activeBooking.joinedDate}</Text>
+                      </View>
+                      <View style={s.dateDivider} />
+                      <View style={s.dateBox}>
+                        <Text style={s.dateLabel}>Expires On</Text>
+                        <Text style={[s.dateValue, { color: '#DC2626' }]}>{activeBooking.expiryDate}</Text>
+                      </View>
                     </View>
                   </View>
                 </View>
-              </View>
-              
-              <View style={s.ticketFooter}>
-                <TouchableOpacity 
-                  style={s.actionBtn}
-                  onPress={() => {
-                    Alert.alert(
-                      'Fee Receipt 📄',
-                      `LibConnect - Official Slip\n\nLibrary: ${activeBooking.libraryName}\nSeat: ${activeBooking.seatNo}\nShift: ${activeBooking.slot}\nStatus: ${activeBooking.status}\nExpiry: ${activeBooking.expiryDate}\n\nThank you for choosing our library!`,
-                      [{ text: 'Close', style: 'cancel' }]
-                    );
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="document-text-outline" size={16} color={tColors.primary} />
-                  <Text style={s.actionBtnText}>Fee Receipt</Text>
-                </TouchableOpacity>
-                <TouchableOpacity 
-                  style={s.actionBtnOutline}
-                  onPress={() => {
-                    const rawOwnerPhone = String(activeBooking.ownerPhone).replace(/\D/g, '').replace(/^0+/, '').replace(/^91/, '');
-                    Linking.openURL(`https://wa.me/91${rawOwnerPhone}?text=${encodeURIComponent('Hi, I need help with my seat booking.')}`);
-                  }}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name="chatbubbles-outline" size={16} color={tColors.primary} />
-                  <Text style={s.actionBtnOutlineText}>Message Owner</Text>
-                </TouchableOpacity>
+                
+                <View style={s.ticketFooter}>
+                  <TouchableOpacity 
+                    style={s.actionBtn}
+                    onPress={() => {
+                      Alert.alert(
+                        'Fee Receipt 📄',
+                        `LibConnect - Official Slip\n\nLibrary: ${activeBooking.libraryName}\nSeat: ${activeBooking.seatNo}\nShift: ${activeBooking.slot}\nStatus: ${activeBooking.status}\nExpiry: ${activeBooking.expiryDate}\n\nThank you for choosing our library!`,
+                        [{ text: 'Close', style: 'cancel' }]
+                      );
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="document-text-outline" size={16} color={tColors.primary} />
+                    <Text style={s.actionBtnText}>Fee Receipt</Text>
+                  </TouchableOpacity>
+                  <TouchableOpacity 
+                    style={s.actionBtnOutline}
+                    onPress={() => {
+                      const rawOwnerPhone = String(activeBooking.ownerPhone).replace(/\D/g, '').replace(/^0+/, '').replace(/^91/, '');
+                      Linking.openURL(`https://wa.me/91${rawOwnerPhone}?text=${encodeURIComponent('Hi, I need help with my seat booking.')}`);
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Ionicons name="chatbubbles-outline" size={16} color={tColors.primary} />
+                    <Text style={s.actionBtnOutlineText}>Message Owner</Text>
+                  </TouchableOpacity>
+                </View>
               </View>
             </View>
-          </View>
+          )
         ) : (
           // SAVED LIBRARIES VIEW
           saved.length === 0 ? (

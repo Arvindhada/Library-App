@@ -11,6 +11,7 @@ import axios from 'axios';
 import { useApp } from '../../../src/context/AppContext';
 import { ownerAddStudent } from '../../../src/services/bookingService';
 import { API_ENDPOINTS } from '../../../src/services/apiConfig';
+import { sendCustomWhatsApp } from '../../../src/services/whatsapp';
 
 const { width } = Dimensions.get('window');
 
@@ -55,7 +56,10 @@ export default function StudentsTab() {
   const router = useRouter();
   const { seat } = useLocalSearchParams();
   const insets = useSafeAreaInsets();
-  const { currentBookings, setCurrentBookings, currentLibrary, fetchDashboardData, loading, addRevenueEntry, deleteStudent } = useApp();
+  const {
+    currentLibrary, currentBookings, setCurrentBookings,
+    fetchDashboardData, addRevenueEntry, deleteStudent, collectFee,
+  } = useApp();
 
   const [search, setSearch]         = useState('');
   const [filter, setFilter]         = useState('All');
@@ -87,11 +91,12 @@ export default function StudentsTab() {
   const soon  = new Date(); soon.setDate(today.getDate() + 3);
 
   const rawList = useMemo(() =>
-    (currentBookings.length > 0 ? currentBookings : DUMMY).map(b => {
+    currentBookings.map(b => {
       const exp = new Date(b.endDate);
       const isDue  = exp < today;
       const isSoon = !isDue && exp <= soon;
-      const fee = b.fee || (b.shift === 'Half Time' ? currentLibrary?.halfTime?.fee : currentLibrary?.fullTime?.fee) || 0;
+      const isHalfTime = b.shift === 'Half Time' || b.shift === 'Morning' || b.shift === 'Evening';
+      const fee = b.fee || (isHalfTime ? currentLibrary?.halfTime?.fee : currentLibrary?.fullTime?.fee) || 0;
       const status = isDue ? 'Expired' : b.status;
       return { ...b, student: b.student || { name: 'Student', phone: '' }, isDue, isSoon, status, fee };
     }), [currentBookings, currentLibrary]);
@@ -137,81 +142,82 @@ export default function StudentsTab() {
     setAddModal(true);
   };
 
-  // Add/Edit student
   const handleAdd = async () => {
     if (!form.name || !form.phone || !form.seat) {
       Alert.alert('Missing Fields', 'Please fill Name, Phone and Seat.'); return;
     }
+    if (!currentLibrary?._id) {
+      Alert.alert('Error', 'Library not found. Please set up your library first.'); return;
+    }
     setSaving(true);
     try {
-      // Calculate end date based on payment status (Paid = 30 days, Demo = 2 days)
       const d = new Date(form.date);
       if (form.isPaid) d.setDate(d.getDate() + 30);
       else d.setDate(d.getDate() + 2);
-      
-      try {
-        if (isEdit) {
-          // In a real app: await axios.put(...)
-        } else {
-          await ownerAddStudent({ 
-            name: form.name, phone: form.phone, seat: form.seat, shift: form.plan, libraryId: currentLibrary?._id,
-            gender: form.gender, address: form.address, admissionDate: form.date, isPaid: form.isPaid, endDate: d.toISOString()
+
+      if (isEdit) {
+        // Edit: update via backend
+        const config = { headers: { Authorization: `Bearer ${await AsyncStorage.getItem('userToken')}` } };
+        const res = await axios.put(`${API_ENDPOINTS.BOOKINGS}/${editId}`, {
+          seat: form.seat,
+          shift: form.plan,
+          endDate: d.toISOString(),
+          gender: form.gender,
+          address: form.address,
+          admissionDate: form.date,
+          fee: (form.plan === 'Half Time' || form.plan === 'Morning' || form.plan === 'Evening')
+            ? (currentLibrary?.halfTime?.fee || currentLibrary?.half_time_fee || 0)
+            : (currentLibrary?.fullTime?.fee || currentLibrary?.full_time_fee || 0),
+        }, config);
+        // Refresh from backend
+        await fetchDashboardData();
+      } else {
+        // Add new student via backend
+        await ownerAddStudent({
+          name: form.name,
+          phone: form.phone,
+          seat: form.seat,
+          shift: form.plan,
+          libraryId: currentLibrary._id,
+          gender: form.gender,
+          address: form.address,
+          admissionDate: form.date,
+          isPaid: form.isPaid,
+          endDate: d.toISOString(),
+          fee: (form.plan === 'Half Time' || form.plan === 'Morning' || form.plan === 'Evening')
+            ? (currentLibrary?.halfTime?.fee || currentLibrary?.half_time_fee || 0)
+            : (currentLibrary?.fullTime?.fee || currentLibrary?.full_time_fee || 0),
+        });
+
+        // If fee paid at admission, also record in revenue
+        if (form.isPaid) {
+          const isHalfPlan = form.plan === 'Half Time' || form.plan === 'Morning' || form.plan === 'Evening';
+          const joinFee = isHalfPlan
+            ? (currentLibrary?.halfTime?.fee || currentLibrary?.half_time_fee || 0)
+            : (currentLibrary?.fullTime?.fee || currentLibrary?.full_time_fee || 0);
+          await addRevenueEntry({
+            type: 'income',
+            category: 'student_fee',
+            amount: joinFee,
+            shift: form.plan,
+            studentName: form.name,
+            method: 'Cash',
+            note: `New admission — Seat ${form.seat}`,
           });
         }
-      } catch (backendErr) {
-        console.warn('Backend offline, using local mock state:', backendErr.message);
+
+        // Refresh to get real backend data
+        await fetchDashboardData();
       }
-      
-      // Inject into local state
-      if (isEdit) {
-        setCurrentBookings(prev => prev.map(b => b._id === editId ? {
-          ...b,
-          student: { ...b.student, name: form.name, phone: form.phone },
-          seat: form.seat,
-          shift: form.plan,
-          endDate: d.toISOString(),
-          gender: form.gender,
-          address: form.address,
-          admissionDate: form.date,
-          fee: form.plan === 'Half Time' ? (currentLibrary?.halfTime?.fee || 600) : (currentLibrary?.fullTime?.fee || 1000)
-        } : b));
-      } else {
-        const newStudent = {
-          _id: 'local-' + Date.now(),
-          student: { name: form.name, phone: form.phone },
-          seat: form.seat,
-          shift: form.plan,
-          status: 'Active',
-          endDate: d.toISOString(),
-          gender: form.gender,
-          address: form.address,
-          admissionDate: form.date,
-          fee: form.plan === 'Half Time' ? (currentLibrary?.halfTime?.fee || 600) : (currentLibrary?.fullTime?.fee || 1000)
-        };
-        setCurrentBookings(prev => [...prev, newStudent]);
-      }
-      
-      // Auto-add income entry to revenue ONLY if fee is paid today (and not editing)
-      if (form.isPaid && !isEdit) {
-        const joinFee = form.plan === 'Half Time'
-          ? (currentLibrary?.halfTime?.fee || 600)
-          : (currentLibrary?.fullTime?.fee || 1000);
-        await addRevenueEntry({
-          type: 'income',
-          category: 'student_fee',
-          amount: joinFee,
-          shift: form.plan,
-          studentName: form.name,
-          method: 'Cash',
-          note: `New admission — Seat ${form.seat}`,
-        });
-      }
-      
+
       setAddModal(false);
       setForm({ name: '', phone: '', gender: 'Male', address: '', date: new Date().toISOString().split('T')[0], seat: '', plan: 'Full Time', isPaid: true });
-      Alert.alert('✅ Done!', isEdit ? 'Student updated successfully.' : (form.isPaid ? 'Student added successfully (Paid).' : 'Student added on 2-Day Demo.'));
-    } catch (e) { Alert.alert('Error', e.message || 'Could not save student.'); }
-    finally { setSaving(false); }
+      Alert.alert('✅ Done!', isEdit ? 'Student updated successfully.' : (form.isPaid ? 'Student added (Fee Paid).' : 'Student added on 2-Day Demo.'));
+    } catch (e) {
+      Alert.alert('Error', e?.message || e?.response?.data?.message || 'Could not save student. Check your connection.');
+    } finally {
+      setSaving(false);
+    }
   };
 
   const handleDelete = async (st) => {
@@ -227,83 +233,61 @@ export default function StudentsTab() {
   };
 
   // Collect payment
+  // Collect payment — use real backend via context
   const openPay = (st) => {
     setSelStudent(st);
-    setPayForm({ amount: '', method: 'UPI' });
+    setPayForm({ amount: String(st.fee || ''), method: 'Cash' });
     setPayModal(true);
   };
+
   const handleCollect = async () => {
     if (!payForm.amount) { Alert.alert('Error', 'Enter amount.'); return; }
     setSaving(true);
     try {
-      const token = await AsyncStorage.getItem('userToken');
-      // Try backend first, fallback gracefully if offline
-      try {
-        await axios.post(API_ENDPOINTS.PAYMENTS, {
-          bookingId: selStudent._id, amount: parseInt(payForm.amount, 10), method: payForm.method,
-        }, { headers: { Authorization: `Bearer ${token}` }, timeout: 5000 });
-      } catch (backendErr) {
-        console.warn('Backend payment save failed (offline?), continuing locally:', backendErr.message);
-      }
-
-      // Update student's booking end date and status locally
-      // Extend from current expiry date (not today) so remaining days carry over
-      const currentExpiry = selStudent?.endDate ? new Date(selStudent.endDate) : new Date();
-      const baseDate = currentExpiry > new Date() ? currentExpiry : new Date();
-      const newEndDate = new Date(baseDate);
-      newEndDate.setDate(newEndDate.getDate() + 30);
-      
-      setCurrentBookings(prev => prev.map(b => b._id === selStudent._id ? {
-        ...b,
-        status: 'Active',
-        endDate: newEndDate.toISOString()
-      } : b));
-
-      // Auto-add income entry to revenue — always runs even if backend is offline
-      await addRevenueEntry({
-        type: 'income',
-        category: 'due_collection',
-        amount: parseInt(payForm.amount, 10),
-        shift: selStudent?.shift || null,
-        studentName: selStudent?.student?.name || null,
-        studentId: selStudent?._id || null,
-        method: payForm.method,
-        note: `Fee collected — Seat ${selStudent?.seat || ''}`,
-      });
+      await collectFee(
+        selStudent._id,
+        parseInt(payForm.amount, 10),
+        payForm.method,
+        selStudent?.student?.name,
+        selStudent?.shift,
+      );
       setPayModal(false);
-      fetchDashboardData();
       Alert.alert(
         '✅ Payment Recorded!',
-        `₹${payForm.amount} via ${payForm.method} saved and booking renewed.`,
-        [
-          { 
-            text: 'Done', 
-            style: 'cancel',
-            onPress: () => {
-              setPayForm({ amount: '', method: 'UPI' });
-            }
-          },
-          {
-            text: 'Send WA Receipt',
-            onPress: () => {
-              const rawPhone = String(selStudent?.student?.phone || '').replace(/\D/g, '').replace(/^0+/, '').replace(/^91/, '');
-              const msg = `*LibConnect - Fee Receipt*\n\nDear *${selStudent?.student?.name || 'Student'}*,\nWe have successfully received your payment of *₹${payForm.amount}* via *${payForm.method}* for Seat Number *${selStudent?.seat || ''}*.\nYour booking has been renewed for 30 days.\n\nThank you!\n- Library Administration`;
-              Linking.openURL(`https://wa.me/91${rawPhone}?text=${encodeURIComponent(msg)}`);
-              setPayForm({ amount: '', method: 'UPI' });
-            }
-          }
-        ],
-        { cancelable: false }
+        `₹${payForm.amount} via ${payForm.method} saved and booking renewed for 30 days.`,
       );
-    } catch (e) { Alert.alert('Error', e.response?.data?.message || e.message || 'Failed'); }
-    finally { setSaving(false); }
+    } catch (e) {
+      Alert.alert('Error', e?.response?.data?.message || 'Payment failed. Check connection.');
+    } finally {
+      setSaving(false);
+    }
   };
 
-  // WhatsApp
+  // WhatsApp reminder
+
   const sendWA = (phone, name, fee) => {
     const msg = `Hi ${name}, your library fee of ₹${fee} is due. Please pay to continue.`;
     Linking.openURL(`https://wa.me/91${phone}?text=${encodeURIComponent(msg)}`);
   };
+
+  if (!currentLibrary) {
+    return (
+      <View style={[s.safe, { paddingTop: insets.top, justifyContent: 'center', alignItems: 'center', padding: 24 }]}>
+        <StatusBar barStyle="dark-content" backgroundColor={C.bg} />
+        <Ionicons name="business-outline" size={80} color={C.textGray} style={{ marginBottom: 16 }} />
+        <Text style={{ fontSize: 20, fontWeight: '700', color: C.textDark, textAlign: 'center', marginBottom: 8 }}>No Library Registered</Text>
+        <Text style={{ fontSize: 14, color: C.textGray, textAlign: 'center', marginBottom: 24, lineHeight: 20 }}>
+          Pehle Home tab par jakar apni Library register karein. Uske baad hi aap yahan students add aur manage kar sakenge.
+        </Text>
+        <TouchableOpacity 
+          style={{ backgroundColor: C.primary, paddingHorizontal: 24, paddingVertical: 14, borderRadius: 12 }}
+          onPress={() => router.push('/owner/tabs/home')}
+        >
+          <Text style={{ color: '#FFF', fontWeight: '700', fontSize: 15 }}>Go to Home Tab</Text>
+        </TouchableOpacity>
+      </View>
+    );
+  }
 
   return (
     <View style={[s.safe, { paddingTop: insets.top }]}>
@@ -459,7 +443,7 @@ export default function StudentsTab() {
                     } else {
                       msg = `Hi ${name}, aapka library seat active hai. Koi bhi help ke liye humse contact karein. - Library`;
                     }
-                    Linking.openURL(`https://wa.me/91${phone}?text=${encodeURIComponent(msg)}`);
+                    sendCustomWhatsApp(phone, msg);
                   }}
                   activeOpacity={0.8}
                 >

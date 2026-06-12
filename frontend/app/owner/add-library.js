@@ -11,6 +11,7 @@ import * as Location from 'expo-location';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useApp } from '../../src/context/AppContext';
+import { uploadMultiplePhotos } from '../../src/services/cloudinaryService';
 
 // Colors based on premium stitch design
 const C = {
@@ -39,6 +40,7 @@ export default function AddLibraryWizard() {
   
   const [step, setStep] = useState(0);
   const [loading, setLoading] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState('');  // e.g. 'Uploading 1/3...'
   const [locLoading, setLocLoading] = useState(false);
   
   // Subscription States
@@ -70,6 +72,7 @@ export default function AddLibraryWizard() {
     });
   };
 
+  // Camera
   const takePhoto = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
@@ -81,8 +84,27 @@ export default function AddLibraryWizard() {
       allowsEditing: true,
       quality: 0.8,
     });
-    if (!result.canceled && result.assets && result.assets.length > 0) {
+    if (!result.canceled && result.assets?.length > 0) {
       setForm(prev => ({ ...prev, photos: [...prev.photos, result.assets[0].uri] }));
+    }
+  };
+
+  // Gallery
+  const pickFromGallery = async () => {
+    const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
+    if (status !== 'granted') {
+      Alert.alert('Permission Required', 'Gallery permission is needed.');
+      return;
+    }
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsMultipleSelection: true,
+      quality: 0.8,
+      selectionLimit: 5,
+    });
+    if (!result.canceled && result.assets?.length > 0) {
+      const uris = result.assets.map(a => a.uri);
+      setForm(prev => ({ ...prev, photos: [...prev.photos, ...uris].slice(0, 6) }));
     }
   };
 
@@ -142,12 +164,33 @@ export default function AddLibraryWizard() {
 
   const handleSave = async () => {
     if (form.photos.length === 0) {
-      Alert.alert('Photo Required', 'Please take at least 1 photo of your library.');
+      Alert.alert('Photo Required', 'Please add at least 1 photo of your library.');
       return;
     }
 
     setLoading(true);
     try {
+      // Step 1: Upload photos to Cloudinary
+      let photoUrls = [];
+      try {
+        setUploadProgress('Uploading photos to cloud...');
+        photoUrls = await uploadMultiplePhotos(
+          form.photos,
+          'libraries',
+          (done, total) => setUploadProgress(`Uploading photo ${done}/${total}...`)
+        );
+      } catch (uploadErr) {
+        Alert.alert(
+          'Photo Upload Failed',
+          'Could not upload photos. Please check:\n1. Cloudinary is set up (see cloudinaryService.js)\n2. Internet connection is active.'
+        );
+        setLoading(false);
+        setUploadProgress('');
+        return;
+      }
+      setUploadProgress('Saving library...');
+
+      // Step 2: Save library with cloud photo URLs
       const payload = {
         name: form.name,
         address: form.address,
@@ -158,17 +201,18 @@ export default function AddLibraryWizard() {
         halfTime: { fee: Number(form.halfTimeFee || 0) },
         fullTime: { fee: Number(form.fullTimeFee) },
         facilities: form.facilities,
-        photos: form.photos,
+        photos: photoUrls,       // ← Cloud URLs, not local URIs
         coordinates: form.coordinates,
       };
 
       await registerLibrary(payload);
-      Alert.alert('Success ✅', 'Your premium library is now listed!');
+      Alert.alert('✅ Library Published!', 'Your library is now live and visible to students!');
       router.replace('/owner/tabs');
     } catch (error) {
-      Alert.alert('Error ❌', error.message || 'Could not register library.');
+      Alert.alert('Error ❌', error.message || 'Could not register library. Check your connection.');
     } finally {
       setLoading(false);
+      setUploadProgress('');
     }
   };
 
@@ -435,9 +479,10 @@ export default function AddLibraryWizard() {
 
   const renderStep3 = () => (
     <View style={s.stepContainer}>
-      <Text style={s.stepTitle}>Live Photos</Text>
-      <Text style={s.subText}>Take at least 1 photo of your library space using the camera. Gallery uploads are not allowed for authenticity.</Text>
+      <Text style={s.stepTitle}>Library Photos</Text>
+      <Text style={s.subText}>Add photos of your library so students can see the space. Real photos get more bookings! 📸</Text>
       
+      {/* Photo Grid */}
       <View style={s.photoGrid}>
         {form.photos.map((uri, idx) => (
           <View key={idx} style={s.photoWrap}>
@@ -447,11 +492,35 @@ export default function AddLibraryWizard() {
             </TouchableOpacity>
           </View>
         ))}
-        <TouchableOpacity style={s.addPhotoBtn} onPress={takePhoto}>
-          <Ionicons name="camera" size={32} color={C.primary} />
-          <Text style={s.addPhotoTxt}>Capture</Text>
-        </TouchableOpacity>
+        
+        {form.photos.length < 6 && (
+          <>
+            {/* Camera Button */}
+            <TouchableOpacity style={s.addPhotoBtn} onPress={takePhoto}>
+              <Ionicons name="camera" size={28} color={C.primary} />
+              <Text style={s.addPhotoTxt}>Camera</Text>
+            </TouchableOpacity>
+
+            {/* Gallery Button */}
+            <TouchableOpacity style={[s.addPhotoBtn, { borderColor: '#6B7280' }]} onPress={pickFromGallery}>
+              <Ionicons name="images" size={28} color="#6B7280" />
+              <Text style={[s.addPhotoTxt, { color: '#6B7280' }]}>Gallery</Text>
+            </TouchableOpacity>
+          </>
+        )}
       </View>
+      
+      <Text style={{ fontSize: 12, color: C.textGray, marginTop: 14, textAlign: 'center' }}>
+        {form.photos.length}/6 photos added
+      </Text>
+
+      {/* Upload progress */}
+      {!!uploadProgress && (
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginTop: 16, backgroundColor: C.primaryLight, borderRadius: 12, padding: 12 }}>
+          <ActivityIndicator size="small" color={C.primary} />
+          <Text style={{ color: C.primary, fontWeight: '600', fontSize: 13 }}>{uploadProgress}</Text>
+        </View>
+      )}
     </View>
   );
 

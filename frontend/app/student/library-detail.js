@@ -15,7 +15,7 @@ export default function LibraryDetail() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
   const { libraries, savedLibraryIds, toggleSaveLibrary, theme: tColors } = useApp();
-  const lib = libraries.find((l) => l.id === id) || libraries[0];
+  const lib = libraries.find((l) => l.id === id || l._id === id) || libraries[0];
   const [slotType, setSlotType] = useState('morning');
   const [isImageViewVisible, setIsImageViewVisible] = useState(false);
   const isSaved = savedLibraryIds.includes(lib.id);
@@ -23,7 +23,78 @@ export default function LibraryDetail() {
   const slot = slotType === 'full' ? lib.fullTime : lib.halfTime;
   const facilities = lib.facilities.map((fid) => FACILITIES_LIST.find((f) => f.id === fid)).filter(Boolean);
 
+  let openTimeStr = '6 AM';
+  let closeTimeStr = '10 PM';
+  let morningSlotStr = '6 AM - 2 PM';
+  let eveningSlotStr = '2 PM - 10 PM';
+  let fullTimeSlotStr = '6 AM - 10 PM';
+
+  if (lib.timings) {
+    const parts = lib.timings.split(' to ');
+    let parsedOk = false;
+    if (parts.length === 2) {
+      openTimeStr = parts[0].trim();
+      closeTimeStr = parts[1].trim();
+      parsedOk = true;
+    } else {
+      const partsHyphen = lib.timings.split('–');
+      if (partsHyphen.length === 2) {
+        openTimeStr = partsHyphen[0].trim();
+        closeTimeStr = partsHyphen[1].trim();
+        parsedOk = true;
+      }
+    }
+
+    if (parsedOk) {
+      const parseTime = (str) => {
+        const match = str.match(/^(\d+)(?::(\d+))?\s*(AM|PM)$/i);
+        if (!match) return null;
+        let h = parseInt(match[1], 10);
+        const m = match[2] ? parseInt(match[2], 10) : 0;
+        const ampm = match[3].toUpperCase();
+        if (ampm === 'PM' && h < 12) h += 12;
+        if (ampm === 'AM' && h === 12) h = 0;
+        return h + m / 60;
+      };
+
+      const formatTime = (num) => {
+        const h = Math.floor(num);
+        const m = Math.round((num - h) * 60);
+        const ampm = h >= 12 ? 'PM' : 'AM';
+        let dh = h % 12;
+        if (dh === 0) dh = 12;
+        const dm = m > 0 ? `:${m.toString().padStart(2, '0')}` : '';
+        return `${dh}${dm} ${ampm}`;
+      };
+
+      const openVal = parseTime(openTimeStr);
+      const closeVal = parseTime(closeTimeStr);
+
+      if (openVal !== null && closeVal !== null) {
+        let duration = closeVal - openVal;
+        if (duration < 0) duration += 24; // overnight
+        const midVal = (openVal + duration / 2) % 24;
+        morningSlotStr = `${openTimeStr} - ${formatTime(midVal)}`;
+        eveningSlotStr = `${formatTime(midVal)} - ${closeTimeStr}`;
+        fullTimeSlotStr = `${openTimeStr} - ${closeTimeStr}`;
+      } else {
+        fullTimeSlotStr = lib.timings;
+      }
+    } else {
+      fullTimeSlotStr = lib.timings;
+    }
+  }
+
   const fallbackImage = 'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=600&q=80';
+
+  const [activePhotoIndex, setActivePhotoIndex] = useState(0);
+
+  const handleScroll = (event) => {
+    const slide = Math.round(event.nativeEvent.contentOffset.x / width);
+    if (slide !== activePhotoIndex) {
+      setActivePhotoIndex(slide);
+    }
+  };
 
   const openMap = () => {
     const destination = encodeURIComponent(lib.address);
@@ -96,9 +167,53 @@ export default function LibraryDetail() {
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>
-        <TouchableOpacity activeOpacity={0.9} onPress={() => setIsImageViewVisible(true)}>
-          <Image source={{ uri: lib.photos?.[0] || fallbackImage }} style={s.heroImage} resizeMode="cover" />
-        </TouchableOpacity>
+        <View style={{ position: 'relative' }}>
+          {lib.photos && lib.photos.length > 0 ? (
+            <ScrollView 
+              horizontal 
+              pagingEnabled 
+              showsHorizontalScrollIndicator={false}
+              onScroll={handleScroll}
+              scrollEventThrottle={16}
+            >
+              {lib.photos.map((photoUri, index) => (
+                <TouchableOpacity key={index} activeOpacity={0.9} onPress={() => setIsImageViewVisible(true)}>
+                  <Image source={{ uri: photoUri }} style={s.heroImage} resizeMode="cover" />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          ) : (
+            <TouchableOpacity activeOpacity={0.9} onPress={() => setIsImageViewVisible(true)}>
+              <Image source={{ uri: fallbackImage }} style={s.heroImage} resizeMode="cover" />
+            </TouchableOpacity>
+          )}
+          
+          {lib.photos && lib.photos.length > 1 && (
+            <View style={{
+              position: 'absolute',
+              bottom: 40,
+              left: 0,
+              right: 0,
+              flexDirection: 'row',
+              justifyContent: 'center',
+              alignItems: 'center',
+              zIndex: 5
+            }}>
+              {lib.photos.map((_, idx) => (
+                <View 
+                  key={idx}
+                  style={{
+                    width: idx === activePhotoIndex ? 10 : 6,
+                    height: idx === activePhotoIndex ? 10 : 6,
+                    borderRadius: 5,
+                    backgroundColor: idx === activePhotoIndex ? tColors.primary : 'rgba(255,255,255,0.7)',
+                    marginHorizontal: 4,
+                  }}
+                />
+              ))}
+            </View>
+          )}
+        </View>
 
         <View style={s.infoContent}>
           <Text style={s.libName}>{lib.name}</Text>
@@ -133,15 +248,15 @@ export default function LibraryDetail() {
           <View style={s.slotRow}>
             <TouchableOpacity style={[s.slotBtn, slotType === 'morning' && s.slotActive]} onPress={() => setSlotType('morning')} activeOpacity={0.8}>
               <Text style={[s.slotText, slotType === 'morning' && s.slotTextActive]}>Morning</Text>
-              <Text style={[s.slotSubText, slotType === 'morning' && s.slotSubTextActive]}>6 AM-2 PM</Text>
+              <Text style={[s.slotSubText, slotType === 'morning' && s.slotSubTextActive]}>{morningSlotStr}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[s.slotBtn, slotType === 'evening' && s.slotActive]} onPress={() => setSlotType('evening')} activeOpacity={0.8}>
               <Text style={[s.slotText, slotType === 'evening' && s.slotTextActive]}>Evening</Text>
-              <Text style={[s.slotSubText, slotType === 'evening' && s.slotSubTextActive]}>2 PM-10 PM</Text>
+              <Text style={[s.slotSubText, slotType === 'evening' && s.slotSubTextActive]}>{eveningSlotStr}</Text>
             </TouchableOpacity>
             <TouchableOpacity style={[s.slotBtn, slotType === 'full' && s.slotActive]} onPress={() => setSlotType('full')} activeOpacity={0.8}>
               <Text style={[s.slotText, slotType === 'full' && s.slotTextActive]}>Full Time</Text>
-              <Text style={[s.slotSubText, slotType === 'full' && s.slotSubTextActive]}>6 AM-10 PM</Text>
+              <Text style={[s.slotSubText, slotType === 'full' && s.slotSubTextActive]}>{fullTimeSlotStr}</Text>
             </TouchableOpacity>
           </View>
 
@@ -189,8 +304,8 @@ export default function LibraryDetail() {
       </View>
 
       <ImageViewing
-        images={[{ uri: lib.photos?.[0] || fallbackImage }]}
-        imageIndex={0}
+        images={(lib.photos && lib.photos.length > 0) ? lib.photos.map(p => ({ uri: p })) : [{ uri: fallbackImage }]}
+        imageIndex={activePhotoIndex}
         visible={isImageViewVisible}
         onRequestClose={() => setIsImageViewVisible(false)}
         swipeToCloseEnabled={true}

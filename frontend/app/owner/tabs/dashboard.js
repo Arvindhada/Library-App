@@ -37,7 +37,7 @@ const C = {
 export default function OwnerDashboard() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { ownerData, currentLibrary, currentBookings, setCurrentBookings, fetchDashboardData, loading, revenueTransactions, addRevenueEntry } = useApp();
+  const { ownerData, currentLibrary, currentBookings, setCurrentBookings, fetchDashboardData, loading, revenueTransactions, acceptBooking, rejectBooking } = useApp();
   
   // Notification states
   const [notifModal, setNotifModal] = useState(false);
@@ -48,7 +48,7 @@ export default function OwnerDashboard() {
   useEffect(() => {
     fetchDashboardData();
     fetchJoinRequests();
-  }, [currentBookings]);
+  }, []);
 
   const fetchJoinRequests = async () => {
     setLoadReq(true);
@@ -58,12 +58,9 @@ export default function OwnerDashboard() {
         headers: { Authorization: `Bearer ${token}` }
       });
       setJoinRequests(res.data?.bookings || res.data || []);
-    } catch {
-      // Fallback demo requests
-      setJoinRequests([
-        { _id: 'r1', student: { name: 'Arjun Mehta', phone: '9876501234', photo: null }, seat: '7', shift: 'Morning', createdAt: new Date().toISOString() },
-        { _id: 'r2', student: { name: 'Kavya Singh', phone: '9123407890', photo: null }, seat: '14', shift: 'Evening', createdAt: new Date().toISOString() },
-      ]);
+    } catch (e) {
+      console.warn('Could not load join requests:', e.message);
+      setJoinRequests([]);
     } finally {
       setLoadReq(false);
     }
@@ -71,42 +68,12 @@ export default function OwnerDashboard() {
 
   const handleAccept = async (req) => {
     setActionId(req._id);
-    
-    // Calculate end date (active for 2 days demo by default)
-    const d = new Date();
-    d.setDate(d.getDate() + 2); // 2 Days Demo limit
-    
-    const newStudentBooking = {
-      _id: req._id || 'local-req-' + Date.now(),
-      student: { 
-        name: req.student?.name || 'Student', 
-        phone: req.student?.phone || '' 
-      },
-      seat: req.seat || 'N/A',
-      shift: req.shift || 'Full Time',
-      status: 'Pending', // Pending = Fee Due / Demo
-      endDate: d.toISOString(),
-      gender: req.student?.gender || 'Male',
-      address: req.student?.address || 'Jaipur',
-      admissionDate: new Date().toISOString().split('T')[0],
-      fee: req.fee || (req.shift === 'Half Time' ? (currentLibrary?.halfTime?.fee || 600) : (currentLibrary?.fullTime?.fee || 1000))
-    };
-
     try {
-      const token = await AsyncStorage.getItem('userToken');
-      await axios.put(`${API_ENDPOINTS.BOOKINGS}/${req._id}/accept`, {}, {
-        headers: { Authorization: `Bearer ${token}` }, timeout: 5000
-      });
-      
-      setCurrentBookings(prev => [...prev, newStudentBooking]);
+      await acceptBooking(req._id);
       setJoinRequests(prev => prev.filter(r => r._id !== req._id));
-      if (fetchDashboardData) fetchDashboardData();
-      Alert.alert('Accepted ✅', `${req.student?.name || 'Student'} has been added as a 2-Day Demo. Collect fee to activate.`);
-    } catch {
-      // Offline/Demo fallback
-      setCurrentBookings(prev => [...prev, newStudentBooking]);
-      setJoinRequests(prev => prev.filter(r => r._id !== req._id));
-      Alert.alert('Done (Demo) ✅', `${req.student?.name || 'Student'} has been added as a 2-Day Demo. Collect fee to activate.`);
+      Alert.alert('✅ Accepted!', `${req.student?.name || 'Student'} added. Collect fee to activate full membership.`);
+    } catch (e) {
+      Alert.alert('Error', e.response?.data?.message || 'Could not accept request. Check connection.');
     } finally {
       setActionId(null);
     }
@@ -118,12 +85,11 @@ export default function OwnerDashboard() {
       {
         text: 'Reject', style: 'destructive', onPress: async () => {
           try {
-            const token = await AsyncStorage.getItem('userToken');
-            await axios.put(`${API_ENDPOINTS.BOOKINGS}/${req._id}/reject`, {}, {
-              headers: { Authorization: `Bearer ${token}` }
-            });
-          } catch {}
-          setJoinRequests(prev => prev.filter(r => r._id !== req._id));
+            await rejectBooking(req._id);
+            setJoinRequests(prev => prev.filter(r => r._id !== req._id));
+          } catch (e) {
+            Alert.alert('Error', 'Could not reject request. Check connection.');
+          }
         }
       }
     ]);
@@ -188,19 +154,16 @@ export default function OwnerDashboard() {
         {/* ── HEADER ── */}
         <View style={s.header}>
           <View style={s.headerLeft}>
-            <View style={s.photoWrap}>
-              {ownerData?.photo ? (
-                <Image source={{ uri: ownerData.photo }} style={s.photo} />
-              ) : (
-                <View style={s.photoPlaceholder}>
-                  <Text style={s.photoInitial}>{ownerData?.name ? ownerData.name[0].toUpperCase() : 'O'}</Text>
-                </View>
-              )}
-              <View style={s.onlineDot} />
-            </View>
             <View style={s.headerText}>
-              <Text style={s.greeting}>Good morning, {ownerData?.name?.split(' ')[0] || 'Owner'} 👋</Text>
-              <Text style={s.libName} numberOfLines={1}>{currentLibrary?.name || 'Gyan Deep Library'}</Text>
+              <Text style={s.greeting}>
+                {(() => {
+                  const h = new Date().getHours();
+                  if (h < 12) return `Good Morning, ${ownerData?.name?.split(' ')[0] || 'Owner'} ☀️`;
+                  if (h < 17) return `Good Afternoon, ${ownerData?.name?.split(' ')[0] || 'Owner'} 👋`;
+                  return `Good Evening, ${ownerData?.name?.split(' ')[0] || 'Owner'} 🌙`;
+                })()}
+              </Text>
+              <Text style={s.libName} numberOfLines={1}>{currentLibrary?.name || '—'}</Text>
             </View>
           </View>
         </View>
@@ -229,7 +192,7 @@ export default function OwnerDashboard() {
 
         <View style={[s.gridRow, { marginBottom: 16 }]}>
           {/* Dues */}
-          <TouchableOpacity style={s.card} onPress={() => router.push('/owner/tabs/students')} activeOpacity={0.85}>
+          <TouchableOpacity style={s.card} onPress={() => router.push('/owner/reports')} activeOpacity={0.85}>
             <Text style={s.cardLabel}>Due Payments</Text>
             <Text style={[s.cardVal, dueCount > 0 && { color: C.red }]}>{dueCount}</Text>
             <Text style={[s.cardSubTeal, dueCount > 0 && { color: C.red }]}>

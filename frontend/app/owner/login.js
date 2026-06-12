@@ -6,6 +6,8 @@ import {
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import axios from 'axios';
+import { API_ENDPOINTS } from '../../src/services/apiConfig';
 
 // ── Colors (Stitch Design Identity) ──
 const C = {
@@ -33,11 +35,18 @@ export default function OwnerLogin() {
     }
     
     setLoading(true);
-    // Simulate sending OTP
-    setTimeout(() => {
+    try {
+      // Hit real backend login/send-otp endpoint
+      await axios.post(API_ENDPOINTS.LOGIN, { phone });
       setLoading(false);
       router.push({ pathname: '/owner/otp', params: { phone } });
-    }, 1000);
+    } catch (e) {
+      setLoading(false);
+      Alert.alert(
+        'Login Failed',
+        e.response?.data?.message || e.message || 'Could not connect to the backend server.'
+      );
+    }
   };
 
   return (

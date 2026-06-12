@@ -8,6 +8,7 @@ import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useApp } from '../../src/context/AppContext';
+import { sendCustomWhatsApp } from '../../src/services/whatsapp';
 
 const { width } = Dimensions.get('window');
 
@@ -67,7 +68,10 @@ const EXPENSE_CATEGORIES = [
 export default function OwnerReports() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
-  const { currentBookings, currentLibrary, revenueTransactions, addRevenueEntry, loadRevenueData, loading } = useApp();
+  const { currentBookings, currentLibrary, revenueTransactions, addRevenueEntry, collectFee, loadRevenueData, loading } = useApp();
+
+  const scrollRef = React.useRef(null);
+  const [dueLayoutY, setDueLayoutY] = useState(0);
 
   // ── Week navigator state ──
   const [weekAnchor, setWeekAnchor] = useState(new Date()); // any date in the current week
@@ -183,13 +187,14 @@ export default function OwnerReports() {
   const overdueStudents = useMemo(() =>
     currentBookings.filter(b => {
       const exp = new Date(b.endDate);
-      return exp < today && b.status !== 'Inactive';
+      return (exp < today || b.status === 'Pending') && b.status !== 'Inactive';
     }).map(b => {
       const exp = new Date(b.endDate);
       const daysOverdue = Math.floor((today - exp) / (1000 * 60 * 60 * 24));
-      const fee = b.shift === 'Half Time'
-        ? (currentLibrary?.halfTime?.fee || 600)
-        : (currentLibrary?.fullTime?.fee || 1000);
+      const isHalfTime = b.shift === 'Half Time' || b.shift === 'Morning' || b.shift === 'Evening';
+      const fee = b.fee || (isHalfTime
+        ? (currentLibrary?.halfTime?.fee || currentLibrary?.half_time_fee || 600)
+        : (currentLibrary?.fullTime?.fee || currentLibrary?.full_time_fee || 1000));
       return { ...b, daysOverdue, fee };
     }), [currentBookings, currentLibrary]);
 
@@ -201,7 +206,7 @@ export default function OwnerReports() {
     const phone = b.student?.phone || '';
     const fee = b.fee;
     const msg = `Hi ${name}, your library seat #${b.seat} fee of ₹${fee} is overdue by ${b.daysOverdue} day(s). Please renew to continue using your seat. Thank you! — Library Management`;
-    Linking.openURL(`https://wa.me/91${phone}?text=${encodeURIComponent(msg)}`);
+    sendCustomWhatsApp(phone, msg);
   };
 
   // Collect due payment inline
@@ -220,16 +225,13 @@ export default function OwnerReports() {
     if (!collectForm.amount) { Alert.alert('Error', 'Enter amount'); return; }
     setCollectSaving(true);
     try {
-      await addRevenueEntry({
-        type: 'income',
-        category: 'due_collection',
-        amount: parseInt(collectForm.amount, 10),
-        shift: collectStudent?.shift || null,
-        studentName: collectStudent?.student?.name || null,
-        studentId: collectStudent?._id || null,
-        method: collectForm.method,
-        note: `Due collected — Seat ${collectStudent?.seat || ''}`,
-      });
+      await collectFee(
+        collectStudent?._id,
+        parseInt(collectForm.amount, 10),
+        collectForm.method,
+        collectStudent?.student?.name || '',
+        collectStudent?.shift || ''
+      );
       setCollectModal(false);
       Alert.alert('✅ Collected!', `₹${collectForm.amount} recorded in revenue.`);
     } catch (e) {
@@ -320,6 +322,7 @@ export default function OwnerReports() {
       </View>
 
       <ScrollView
+        ref={scrollRef}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={s.content}
         refreshControl={<RefreshControl refreshing={loading} onRefresh={onRefresh} colors={[C.primary]} tintColor={C.primary} />}
@@ -363,10 +366,14 @@ export default function OwnerReports() {
 
         {/* ── INCOME / EXPENSE / NET ── */}
         <View style={s.statsRow}>
-          <View style={[s.miniCard, { backgroundColor: C.greenLight, borderColor: C.greenBorder }]}>
-            <Text style={s.miniLabel}>Income</Text>
-            <Text style={[s.miniVal, { color: C.green }]}>+{formatAmount(monthIncome)}</Text>
-          </View>
+          <TouchableOpacity 
+            style={[s.miniCard, { backgroundColor: '#FEE2E2', borderColor: '#FCA5A5' }]}
+            onPress={() => scrollRef.current?.scrollTo({ y: dueLayoutY, animated: true })}
+            activeOpacity={0.8}
+          >
+            <Text style={[s.miniLabel, { color: C.red }]}>Due Payments</Text>
+            <Text style={[s.miniVal, { color: C.red }]}>{formatAmount(totalDues)}</Text>
+          </TouchableOpacity>
           <View style={[s.miniCard, { backgroundColor: C.orangeLight, borderColor: C.orangeBorder }]}>
             <Text style={s.miniLabel}>Expenses</Text>
             <Text style={[s.miniVal, { color: C.orange }]}>-{formatAmount(monthExpense)}</Text>
@@ -488,6 +495,85 @@ export default function OwnerReports() {
           ))}
           {shiftBreakdown.every(s => s.amount === 0) && (
             <Text style={s.emptyTxt}>No shift data yet for {MONTH_NAMES[viewingMonth]}</Text>
+          )}
+        </View>
+
+
+        {/* ── DUE COLLECTIONS SECTION ── */}
+        <View style={s.card} onLayout={e => setDueLayoutY(e.nativeEvent.layout.y)}>
+          <View style={s.secRow}>
+            <Text style={s.secTitle}>Due Payments</Text>
+            {overdueStudents.length > 0 && (
+              <View style={s.pendingBadge}>
+                <Text style={s.pendingTxt}>₹{formatAmount(totalDues)} pending</Text>
+              </View>
+            )}
+          </View>
+
+          {overdueStudents.length === 0 ? (
+            <View style={s.emptyDue}>
+              <Ionicons name="checkmark-circle-outline" size={40} color="#9FE1CB" />
+              <Text style={s.emptyDueTxt}>All fees collected! 🎉</Text>
+              <Text style={[s.emptyDueTxt, { fontSize: 12 }]}>No overdue students this month.</Text>
+            </View>
+          ) : (
+            <>
+              {/* Banner */}
+              <View style={s.duesBanner}>
+                <Ionicons name="alert-circle-outline" size={18} color={C.orange} />
+                <Text style={s.duesBannerTxt}>
+                  {overdueStudents.length} student{overdueStudents.length > 1 ? 's' : ''} overdue · Total ₹{totalDues.toLocaleString('en-IN')} pending
+                </Text>
+              </View>
+
+              {overdueStudents.map((b) => {
+                const initials = b.student?.name
+                  ? b.student.name.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2)
+                  : 'S';
+                return (
+                  <View key={b._id} style={s.dueCard}>
+                    {/* Red left accent */}
+                    <View style={[s.dueAccent, { backgroundColor: C.red }]} />
+
+                    {/* Avatar */}
+                    <View style={[s.dueAva, { backgroundColor: '#FEE2E2' }]}>
+                      <Text style={[s.dueAvaInit, { color: C.red }]}>{initials}</Text>
+                    </View>
+
+                    {/* Info */}
+                    <View style={{ flex: 1 }}>
+                      <Text style={s.dueName}>{b.student?.name || 'Student'}</Text>
+                      <Text style={s.dueSub}>
+                        Seat {b.seat} · {b.shift} · 📞 {b.student?.phone || 'N/A'}
+                      </Text>
+                      <Text style={[s.dueOverdue, { color: C.red }]}>
+                        ⏰ {b.daysOverdue} day{b.daysOverdue !== 1 ? 's' : ''} overdue · ₹{b.fee.toLocaleString('en-IN')} due
+                      </Text>
+
+                      <View style={s.dueActions}>
+                        <TouchableOpacity
+                          style={s.collectBtn}
+                          onPress={() => openCollect(b)}
+                          activeOpacity={0.85}
+                        >
+                          <Ionicons name="cash-outline" size={14} color="#FFF" />
+                          <Text style={s.collectBtnTxt}>Collect ₹{b.fee.toLocaleString('en-IN')}</Text>
+                        </TouchableOpacity>
+
+                        <TouchableOpacity
+                          style={s.waBtn}
+                          onPress={() => sendWhatsApp(b)}
+                          activeOpacity={0.85}
+                        >
+                          <Ionicons name="logo-whatsapp" size={14} color={C.green} />
+                          <Text style={s.waBtnTxt}>Remind</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                );
+              })}
+            </>
           )}
         </View>
 

@@ -1,8 +1,10 @@
-import React from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ImageBackground } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, ImageBackground, Dimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../../../src/context/AppContext';
+
+const { width } = Dimensions.get('window');
+const CARD_IMAGE_WIDTH = width - 56;
 
 // We will map over the 'libraries' from context instead of DUMMY_LIBS.
 
@@ -119,21 +121,61 @@ export default function StudentHome() {
         {libraries.slice(0, 5).map((lib, i) => {
           const distance = (1.2 + i * 0.8).toFixed(1);
           return (
-          <TouchableOpacity key={lib.id} style={s.card} activeOpacity={0.9} onPress={() => goDetail(lib.id)}>
-            {/* Image Area placeholder */}
-            <ImageBackground source={{ uri: lib.photos?.[0] || 'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=600&q=80' }} style={s.cardImgArea} imageStyle={{ borderRadius: 16 }}>
-              {/* Overlay for better text readability */}
-              <View style={s.imageOverlay} />
+          <View key={lib._id || lib.id} style={s.card}>
+            <View style={{ height: 160, position: 'relative' }}>
+              <ScrollView 
+                horizontal 
+                pagingEnabled 
+                showsHorizontalScrollIndicator={false}
+                style={{ height: 160, borderRadius: 16 }}
+              >
+                {(lib.photos && lib.photos.length > 0 ? lib.photos : ['https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=600&q=80']).map((photoUri, index) => (
+                  <TouchableOpacity 
+                    key={index} 
+                    activeOpacity={0.9} 
+                    onPress={() => goDetail(lib._id || lib.id)}
+                    style={{ width: CARD_IMAGE_WIDTH, height: 160 }}
+                  >
+                    <ImageBackground source={{ uri: photoUri }} style={s.cardImgArea} imageStyle={{ borderRadius: 16 }}>
+                      <View style={s.imageOverlay} />
+                      <View style={[s.seatsBadge, { backgroundColor: lib.vacantSeats > 0 ? tColors.primary : '#EF4444' }]}>
+                        <Text style={s.seatsBadgeText}>{lib.vacantSeats > 0 ? `${lib.vacantSeats} seats free` : 'Full'}</Text>
+                      </View>
+                    </ImageBackground>
+                  </TouchableOpacity>
+                ))}
+              </ScrollView>
               
-              {/* Top right seats badge */}
-              <View style={[s.seatsBadge, { backgroundColor: lib.vacantSeats > 0 ? tColors.primary : '#EF4444' }]}>
-                <Text style={s.seatsBadgeText}>{lib.vacantSeats > 0 ? `${lib.vacantSeats} seats free` : 'Full'}</Text>
-              </View>
-
-            </ImageBackground>
+              {/* Dots indicator for multiple photos */}
+              {lib.photos && lib.photos.length > 1 && (
+                <View style={{
+                  position: 'absolute',
+                  bottom: 10,
+                  left: 0,
+                  right: 0,
+                  flexDirection: 'row',
+                  justifyContent: 'center',
+                  alignItems: 'center',
+                  pointerEvents: 'none'
+                }}>
+                  {lib.photos.map((_, idx) => (
+                    <View 
+                      key={idx}
+                      style={{
+                        width: 6,
+                        height: 6,
+                        borderRadius: 3,
+                        backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                        marginHorizontal: 3
+                      }}
+                    />
+                  ))}
+                </View>
+              )}
+            </View>
 
             {/* Details Area */}
-            <View style={s.cardDetails}>
+            <TouchableOpacity activeOpacity={0.9} onPress={() => goDetail(lib._id || lib.id)} style={s.cardDetails}>
               <View style={s.cardRow}>
                 <Text style={s.libName} numberOfLines={1}>{lib.name}</Text>
                 <View style={s.priceBox}>
@@ -171,8 +213,8 @@ export default function StudentHome() {
                   <Text style={s.bookBtnText}>Book</Text>
                 </TouchableOpacity>
               </View>
-            </View>
-          </TouchableOpacity>
+            </TouchableOpacity>
+          </View>
         )})}
 
         <View style={{ height: 40 }} />

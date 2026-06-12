@@ -16,6 +16,13 @@ const userSchema = new mongoose.Schema({
   photo: { type: String, default: null }, // URL to profile picture
   upi_id: { type: String, default: '' }, // Payment ID for Owners
   
+  // Subscription Status
+  subscription: {
+    name:     { type: String, default: 'Basic – Free Trial' },
+    daysLeft: { type: Number, default: 28 },
+    type:     { type: String, default: 'free' }
+  },
+
   // Student specific: List of libraries they have marked as 'Saved'
   savedLibraries: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Library' }]
 }, { timestamps: true });

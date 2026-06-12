@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Image,
-  ImageBackground, Modal, ActivityIndicator, Alert, TextInput
+  ImageBackground, Modal, ActivityIndicator, Alert, TextInput, Dimensions
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,6 +9,9 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { useApp } from '../../../src/context/AppContext';
 import { API_ENDPOINTS } from '../../../src/services/apiConfig';
+
+const { width } = Dimensions.get('window');
+const CARD_IMAGE_WIDTH = width - 56;
 
 // Local theme for the new design
 const tColors = {
@@ -41,6 +44,7 @@ export default function OwnerHome() {
   const [searchQuery, setSearchQuery] = useState('');
 
   useEffect(() => {
+    if (fetchDashboardData) fetchDashboardData();
     fetchJoinRequests();
   }, []);
 
@@ -53,11 +57,8 @@ export default function OwnerHome() {
       });
       setJoinRequests(res.data?.bookings || res.data || []);
     } catch {
-      // Dummy requests for UI demo fallback
-      setJoinRequests([
-        { _id: 'r1', student: { name: 'Arjun Mehta', phone: '9876501234', photo: null }, seat: '7', shift: 'Morning', createdAt: new Date().toISOString() },
-        { _id: 'r2', student: { name: 'Kavya Singh', phone: '9123407890', photo: null }, seat: '14', shift: 'Evening', createdAt: new Date().toISOString() },
-      ]);
+      // Offline fallback: set empty array (no dummy data)
+      setJoinRequests([]);
     } finally {
       setLoadReq(false);
     }
@@ -224,15 +225,60 @@ export default function OwnerHome() {
           .slice(0, 5).map((lib, i) => {
           const distance = (1.2 + i * 0.8).toFixed(1);
           return (
-            <TouchableOpacity key={lib.id} style={s.card} activeOpacity={0.9} onPress={() => goDetail(lib.id)}>
-              <ImageBackground source={{ uri: lib.photos?.[0] || 'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=600&q=80' }} style={s.cardImgArea} imageStyle={{ borderRadius: 16 }}>
-                <View style={s.imageOverlay} />
-                <View style={[s.seatsBadge, { backgroundColor: lib.vacantSeats > 0 ? tColors.primary : '#EF4444' }]}>
-                  <Text style={s.seatsBadgeText}>{lib.vacantSeats > 0 ? `${lib.vacantSeats} seats free` : 'Full'}</Text>
-                </View>
-              </ImageBackground>
+            <View key={lib._id || lib.id} style={s.card}>
+              <View style={{ height: 160, position: 'relative' }}>
+                <ScrollView 
+                  horizontal 
+                  pagingEnabled 
+                  showsHorizontalScrollIndicator={false}
+                  style={{ height: 160, borderRadius: 16 }}
+                >
+                  {(lib.photos && lib.photos.length > 0 ? lib.photos : ['https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=600&q=80']).map((photoUri, index) => (
+                    <TouchableOpacity 
+                      key={index} 
+                      activeOpacity={0.9} 
+                      onPress={() => goDetail(lib._id || lib.id)}
+                      style={{ width: CARD_IMAGE_WIDTH, height: 160 }}
+                    >
+                      <ImageBackground source={{ uri: photoUri }} style={s.cardImgArea} imageStyle={{ borderRadius: 16 }}>
+                        <View style={s.imageOverlay} />
+                        <View style={[s.seatsBadge, { backgroundColor: lib.vacantSeats > 0 ? tColors.primary : '#EF4444' }]}>
+                          <Text style={s.seatsBadgeText}>{lib.vacantSeats > 0 ? `${lib.vacantSeats} seats free` : 'Full'}</Text>
+                        </View>
+                      </ImageBackground>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                
+                {/* Dots indicator for multiple photos */}
+                {lib.photos && lib.photos.length > 1 && (
+                  <View style={{
+                    position: 'absolute',
+                    bottom: 10,
+                    left: 0,
+                    right: 0,
+                    flexDirection: 'row',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    pointerEvents: 'none'
+                  }}>
+                    {lib.photos.map((_, idx) => (
+                      <View 
+                        key={idx}
+                        style={{
+                          width: 6,
+                          height: 6,
+                          borderRadius: 3,
+                          backgroundColor: 'rgba(255, 255, 255, 0.8)',
+                          marginHorizontal: 3
+                        }}
+                      />
+                    ))}
+                  </View>
+                )}
+              </View>
 
-              <View style={s.cardDetails}>
+              <TouchableOpacity activeOpacity={0.9} onPress={() => goDetail(lib._id || lib.id)} style={s.cardDetails}>
                 <View style={s.cardRow}>
                   <Text style={s.libName} numberOfLines={1}>{lib.name}</Text>
                   <View style={s.priceBox}>
@@ -265,12 +311,19 @@ export default function OwnerHome() {
                     <Text style={s.ratingText}>{lib.rating || 4.5}</Text>
                     <Text style={s.reviewsText}>{(lib.rating * 28).toFixed(0)} reviews</Text>
                   </View>
-                  <TouchableOpacity style={s.bookBtn}>
-                    <Text style={s.bookBtnText}>Book</Text>
+                  <TouchableOpacity
+                    style={[s.bookBtn, { backgroundColor: '#1A1D1E' }]}
+                    onPress={(e) => {
+                      e.stopPropagation();
+                      router.push('/owner/seat-manager');
+                    }}
+                    activeOpacity={0.85}
+                  >
+                    <Text style={s.bookBtnText}>Manage →</Text>
                   </TouchableOpacity>
                 </View>
-              </View>
-            </TouchableOpacity>
+              </TouchableOpacity>
+            </View>
           );
         })}
 

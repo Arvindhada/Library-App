@@ -7,6 +7,8 @@ import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import axios from 'axios';
+import { API_ENDPOINTS } from '../../src/services/apiConfig';
 
 // ── Colors (Stitch Design Identity) ──
 const C = {
@@ -63,15 +65,40 @@ export default function OwnerOTP() {
     }
     
     setLoading(true);
-    setTimeout(async () => {
-      // Save Token and Role locally
-      await AsyncStorage.setItem('userToken', 'dummy-token');
-      await AsyncStorage.setItem('userRole', 'owner');
+    try {
+      // Clear any old/invalid token first
+      await AsyncStorage.removeItem('userToken');
+      await AsyncStorage.removeItem('userRole');
+
+      // Hit real backend verify-otp route
+      const response = await axios.post(API_ENDPOINTS.VERIFY_OTP, {
+        phone: phone.includes('+91') ? phone : `+91${phone}`,
+        otp: code,
+        role: 'owner',
+      }, { timeout: 10000 });
+      
+      const { token, role } = response.data;
+
+      if (!token) {
+        throw new Error('No token received from server');
+      }
+
+      // Save Real JWT Token and Role locally
+      await AsyncStorage.setItem('userToken', token);
+      await AsyncStorage.setItem('userRole', role || 'owner');
       
       setLoading(false);
       router.replace('/owner/tabs');
-    }, 1000);
+    } catch (e) {
+      setLoading(false);
+      const msg = e.response?.data?.message || e.message || 'OTP verification failed.';
+      Alert.alert(
+        'Verification Failed ❌',
+        `${msg}\n\n💡 Testing ke liye OTP: 1234`
+      );
+    }
   };
+
 
   return (
     <SafeAreaView style={[s.safe, { paddingTop: insets.top, paddingBottom: insets.bottom }]}>

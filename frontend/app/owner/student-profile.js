@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  StatusBar, Linking, Alert, ActivityIndicator, Modal, TextInput
+  StatusBar, Linking, Alert, ActivityIndicator, Modal, TextInput,
+  Keyboard, TouchableWithoutFeedback
 } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -10,6 +11,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
 import { API_ENDPOINTS } from '../../src/services/apiConfig';
 import { useApp } from '../../src/context/AppContext';
+import { sendCustomWhatsApp } from '../../src/services/whatsapp';
 
 // ── Colors ──
 const C = {
@@ -96,11 +98,8 @@ export default function StudentProfile() {
       if (localPayments.length > 0) {
         setPayments(localPayments);
       } else {
-        // Fallback dummy data if no local payments exist yet
-        setPayments([
-          { _id: 'p1', amount: fee, method: 'UPI',  date: new Date(Date.now() - 30*86400000).toISOString(), status: 'Paid' },
-          { _id: 'p2', amount: fee, method: 'Cash', date: new Date(Date.now() - 60*86400000).toISOString(), status: 'Paid' },
-        ]);
+        // No local payments found, set empty array
+        setPayments([]);
       }
     } finally {
       setLoadPay(false);
@@ -320,7 +319,7 @@ export default function StudentProfile() {
           <TouchableOpacity 
             style={s.collectBtn} 
             onPress={() => {
-              setPayForm({ amount: '', method: 'UPI' });
+              setPayForm({ amount: String(fee), method: 'UPI' });
               setPayModal(true);
             }} 
             activeOpacity={0.85}
@@ -331,11 +330,10 @@ export default function StudentProfile() {
           <TouchableOpacity
             style={s.waBtn}
             onPress={() => {
-              const rawPhone = String(phone || '').replace(/\D/g, '').replace(/^0+/, '').replace(/^91/, '');
               const msg = isDue
                 ? `Hi ${name}, aapka library fee ₹${fee} due hai. Please jaldi renew karein. - Library`
                 : `Hi ${name}, aapka library seat active hai. Koi bhi help ke liye humse contact karein. - Library`;
-              Linking.openURL(`https://wa.me/91${rawPhone}?text=${encodeURIComponent(msg)}`);
+              sendCustomWhatsApp(phone, msg);
             }}
             activeOpacity={0.8}
           >
@@ -390,60 +388,68 @@ export default function StudentProfile() {
 
       {/* ── COLLECT PAYMENT MODAL ── */}
       <Modal visible={payModal} animationType="slide" transparent>
-        <View style={s.overlay}>
-          <View style={s.modalBox}>
-            <View style={s.modalHead}>
-              <View>
-                <Text style={s.modalTitle}>Collect Payment</Text>
-                <Text style={s.modalSub}>for {name}</Text>
-              </View>
-              <TouchableOpacity onPress={() => {
-                setPayModal(false);
-                setPayForm({ amount: '', method: 'UPI' });
-              }}>
-                <Ionicons name="close" size={22} color={C.textGray} />
-              </TouchableOpacity>
-            </View>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss}>
+          <View style={s.overlay}>
+            <TouchableWithoutFeedback onPress={(e) => e.stopPropagation()}>
+              <View style={s.modalBox}>
+                <View style={s.modalHead}>
+                  <View>
+                    <Text style={s.modalTitle}>Collect Payment</Text>
+                    <Text style={s.modalSub}>for {name}</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => {
+                    setPayModal(false);
+                    setPayForm({ amount: '', method: 'UPI' });
+                    Keyboard.dismiss();
+                  }}>
+                    <Ionicons name="close" size={22} color={C.textGray} />
+                  </TouchableOpacity>
+                </View>
 
-            <Text style={s.lbl}>Amount (₹)</Text>
-            <TextInput
-              style={s.inp}
-              keyboardType="numeric"
-              value={payForm.amount}
-              onChangeText={v => setPayForm(p => ({ ...p, amount: v }))}
-              placeholder="Enter amount"
-              placeholderTextColor={C.textGray}
-            />
+                <Text style={s.lbl}>Amount (₹)</Text>
+                <TextInput
+                  style={s.inp}
+                  keyboardType="numeric"
+                  value={payForm.amount}
+                  onChangeText={v => setPayForm(p => ({ ...p, amount: v }))}
+                  placeholder="Enter amount"
+                  placeholderTextColor={C.textGray}
+                />
 
-            <Text style={s.lbl}>Payment Method</Text>
-            <View style={s.planRow}>
-              {['UPI', 'Cash', 'Online', 'Bank Transfer'].map(m => (
-                <TouchableOpacity
-                  key={m}
-                  style={[s.planChip, payForm.method === m && s.planChipAct]}
-                  onPress={() => setPayForm(p => ({ ...p, method: m }))}
-                >
-                  <Text style={[s.planChipTxt, payForm.method === m && { color: '#FFF' }]}>{m}</Text>
+                <Text style={s.lbl}>Payment Method</Text>
+                <View style={s.planRow}>
+                  {['UPI', 'Cash', 'Online', 'Bank Transfer'].map(m => (
+                    <TouchableOpacity
+                      key={m}
+                      style={[s.planChip, payForm.method === m && s.planChipAct]}
+                      onPress={() => {
+                        Keyboard.dismiss();
+                        setPayForm(p => ({ ...p, method: m }));
+                      }}
+                    >
+                      <Text style={[s.planChipTxt, payForm.method === m && { color: '#FFF' }]}>{m}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <View style={s.totalBox}>
+                  <Text style={s.totalLbl}>Amount to collect:</Text>
+                  <Text style={s.totalAmt}>₹{Number(payForm.amount || 0).toLocaleString('en-IN')}</Text>
+                </View>
+
+                <TouchableOpacity style={s.saveBtn} onPress={handleCollect} activeOpacity={0.85} disabled={saving}>
+                  {saving
+                    ? <ActivityIndicator color="#FFF" />
+                    : <>
+                        <Ionicons name="checkmark-circle-outline" size={18} color="#FFF" />
+                        <Text style={s.saveTxt}>Record Payment & Renew</Text>
+                      </>
+                  }
                 </TouchableOpacity>
-              ))}
-            </View>
-
-            <View style={s.totalBox}>
-              <Text style={s.totalLbl}>Amount to collect:</Text>
-              <Text style={s.totalAmt}>₹{Number(payForm.amount || 0).toLocaleString('en-IN')}</Text>
-            </View>
-
-            <TouchableOpacity style={s.saveBtn} onPress={handleCollect} activeOpacity={0.85} disabled={saving}>
-              {saving
-                ? <ActivityIndicator color="#FFF" />
-                : <>
-                    <Ionicons name="checkmark-circle-outline" size={18} color="#FFF" />
-                    <Text style={s.saveTxt}>Record Payment & Renew</Text>
-                  </>
-              }
-            </TouchableOpacity>
+              </View>
+            </TouchableWithoutFeedback>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </View>
   );

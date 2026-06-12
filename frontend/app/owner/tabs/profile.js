@@ -36,8 +36,10 @@ export default function OwnerProfile() {
     ownerData, setOwnerData,
     currentLibrary, currentBookings,
     subscriptionPlan, setSubscriptionPlan,
+    updateOwnerSubscription,
     logout,
     saveOwnerProfile,
+    revenueTransactions,
   } = useApp();
 
   // Modals visibility
@@ -54,12 +56,21 @@ export default function OwnerProfile() {
   // Form states
   const [name, setName] = useState(ownerData?.name || '');
   const [phone, setPhone] = useState(ownerData?.phone || '');
+  const [upiId, setUpiId] = useState(ownerData?.upi_id || '');
   const [notifs, setNotifs] = useState(true);
   const [whatsAppNotifs, setWhatsAppNotifs] = useState(false);
 
   useEffect(() => {
     loadSettings();
   }, []);
+
+  useEffect(() => {
+    if (ownerData) {
+      setName(ownerData.name || '');
+      setPhone(ownerData.phone || '');
+      setUpiId(ownerData.upi_id || '');
+    }
+  }, [ownerData]);
 
   const loadSettings = async () => {
     try {
@@ -84,10 +95,16 @@ export default function OwnerProfile() {
   const getInitials = (n) =>
     n ? n.split(' ').map(w => w[0]).join('').toUpperCase().substring(0, 2) : 'O';
 
-  // Stats Calculations (Strictly Live Data)
-  const totalRevenue = payments?.length > 0 
-    ? payments.reduce((a, b) => a + (b.amount || 0), 0)
-    : 0;
+  // Stats Calculations — use revenueTransactions from context
+  const currentMonth = new Date().getMonth();
+  const currentYear  = new Date().getFullYear();
+  const totalRevenue = (revenueTransactions || []).reduce((sum, t) => {
+    const d = new Date(t.date || t.createdAt);
+    if (d.getMonth() === currentMonth && d.getFullYear() === currentYear && t.type === 'income') {
+      return sum + (t.amount || 0);
+    }
+    return sum;
+  }, 0);
 
   const totalBookings = currentBookings?.length > 0
     ? currentBookings.length
@@ -106,7 +123,7 @@ export default function OwnerProfile() {
 
   const handleSaveProfile = async () => {
     if (!name.trim()) { Alert.alert('Error', 'Name cannot be empty.'); return; }
-    await saveOwnerProfile({ name: name.trim(), phone: phone.trim() });
+    await saveOwnerProfile({ name: name.trim(), phone: phone.trim(), upi_id: upiId.trim() });
     setEditProfileModal(false);
     Alert.alert('✅ Saved!', 'Profile details saved successfully.');
   };
@@ -170,18 +187,17 @@ export default function OwnerProfile() {
       return;
     }
     setLoading(true);
-    setTimeout(async () => {
-      setLoading(false);
-      
+    try {
       const currentDaysLeft = subscriptionPlan?.daysLeft || 0;
       const addedDays = selectedPlan === 'monthly' ? 30 : 365;
       const newDaysLeft = currentDaysLeft + addedDays;
       const planName = selectedPlan === 'monthly' ? 'Pro Monthly' : 'Pro Yearly';
       
-      const subInfo = { name: planName, daysLeft: newDaysLeft, type: selectedPlan };
-      
-      setSubscriptionPlan(subInfo);
-      await AsyncStorage.setItem('@libconnect_subscription', JSON.stringify(subInfo));
+      await updateOwnerSubscription({
+        name: planName,
+        daysLeft: newDaysLeft,
+        type: selectedPlan
+      });
       
       setPaymentVerifying(false);
       setUpgradeModal(false);
@@ -191,7 +207,11 @@ export default function OwnerProfile() {
         "Plan Upgraded! ✅", 
         `Your ${planName} is active. Remaining days were carried over. You now have ${newDaysLeft} days left.`
       );
-    }, 1500);
+    } catch (err) {
+      Alert.alert('Error ❌', 'Could not upgrade subscription. Check connection.');
+    } finally {
+      setLoading(false);
+    }
   };
 
   return (
@@ -220,8 +240,8 @@ export default function OwnerProfile() {
 
           {/* Details */}
           <View style={s.detailsColumn}>
-            <Text style={s.libraryName}>{currentLibrary?.name || 'Gyan Deep Library'}</Text>
-            <Text style={s.ownerSubtitle}>{ownerData?.name || 'Ramesh Gupta'} · Owner</Text>
+            <Text style={s.libraryName}>{currentLibrary?.name || 'My Library'}</Text>
+            <Text style={s.ownerSubtitle}>{ownerData?.name || 'Owner'} · Owner</Text>
             
             <View style={s.tagsRow}>
               <View style={s.tagGreen}>
@@ -241,6 +261,7 @@ export default function OwnerProfile() {
             onPress={() => {
               setName(ownerData?.name || '');
               setPhone(ownerData?.phone || '');
+              setUpiId(ownerData?.upi_id || '');
               setEditProfileModal(true);
             }} 
             activeOpacity={0.8}
@@ -489,6 +510,17 @@ export default function OwnerProfile() {
               placeholder="Phone number"
               placeholderTextColor={C.textGray}
               keyboardType="phone-pad"
+            />
+
+            <Text style={s.fieldLabel}>UPI ID (for payments)</Text>
+            <TextInput
+              style={s.input}
+              value={upiId}
+              onChangeText={setUpiId}
+              placeholder="e.g. yourname@upi"
+              placeholderTextColor={C.textGray}
+              autoCapitalize="none"
+              keyboardType="email-address"
             />
 
             <TouchableOpacity style={s.saveProfileBtn} onPress={handleSaveProfile} activeOpacity={0.85}>

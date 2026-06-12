@@ -14,6 +14,19 @@ const generateToken = (id) => {
   });
 };
 
+// Helper to normalize phone numbers
+const normalizePhone = (phone) => {
+  if (!phone) return '';
+  const clean = phone.replace(/\D/g, '');
+  if (clean.length === 10) {
+    return `+91${clean}`;
+  } else if (clean.length === 12 && clean.startsWith('91')) {
+    return `+${clean}`;
+  } else {
+    return `+91${clean.slice(-10)}`;
+  }
+};
+
 // Reverting to Mock OTP (1234) as requested for now
 router.post('/login', async (req, res, next) => {
   try {
@@ -38,12 +51,18 @@ router.post('/verify-otp', async (req, res, next) => {
       throw new Error("Invalid OTP. Use 1234 for testing.");
     }
 
-    let user = await User.findOne({ phone: phone.includes('+91') ? phone : `+91${phone}` });
+    const normalizedPhone = normalizePhone(phone);
+    let user = await User.findOne({ phone: normalizedPhone });
     if (!user) {
       user = await User.create({ 
-        phone: phone.includes('+91') ? phone : `+91${phone}`, 
+        phone: normalizedPhone, 
         role: role || 'owner' 
       }); 
+    } else {
+      if (role === 'owner' && user.role !== 'owner') {
+        user.role = 'owner';
+        await user.save();
+      }
     }
     
     const token = generateToken(user._id);
@@ -93,14 +112,15 @@ router.post('/register-owner', async (req, res, next) => {
       throw new Error("Phone number is required");
     }
     
-    let user = await User.findOne({ phone });
+    const normalizedPhone = normalizePhone(phone);
+    let user = await User.findOne({ phone: normalizedPhone });
     if (user) {
       res.status(400);
       throw new Error("User already exists with this phone number");
     }
     
     // Create a new user with 'owner' role explicitly
-    user = await User.create({ name, phone, email, role: 'owner' });
+    user = await User.create({ name, phone: normalizedPhone, email, role: 'owner' });
     const token = generateToken(user._id);
     res.status(201).json({ success: true, token, role: user.role, message: "Owner registered successfully" });
   } catch (error) {

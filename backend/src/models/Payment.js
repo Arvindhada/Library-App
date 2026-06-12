@@ -1,15 +1,20 @@
 const mongoose = require('mongoose');
 
 const paymentSchema = new mongoose.Schema({
+  type: {
+    type: String,
+    enum: ['income', 'expense'],
+    default: 'income',
+  },
   booking: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'Booking',
-    required: true,
+    required: false,
   },
   student: {
     type: mongoose.Schema.Types.ObjectId,
     ref: 'User',
-    required: true,
+    required: false,
   },
   library: {
     type: mongoose.Schema.Types.ObjectId,
@@ -22,17 +27,18 @@ const paymentSchema = new mongoose.Schema({
   },
   method: {
     type: String,
-    enum: ['UPI', 'Cash', 'Card', 'Other'],
+    enum: ['UPI', 'Cash', 'Online', 'Card', 'Other'],
     default: 'Cash',
   },
-  note: {
+  shift: { type: String, default: '' },
+  studentName: { type: String, default: '' },
+  category: {
     type: String,
-    default: '',
+    enum: ['student_fee', 'due_collection', 'rent', 'electricity', 'wifi', 'cleaning', 'other'],
+    default: 'student_fee',
   },
-  paidDate: {
-    type: Date,
-    default: Date.now,
-  },
+  note: { type: String, default: '' },
+  paidDate: { type: Date, default: Date.now },
 }, { timestamps: true });
 
 paymentSchema.index({ library: 1, paidDate: -1 });
