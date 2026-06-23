@@ -128,4 +128,54 @@ router.post('/register-owner', async (req, res, next) => {
   }
 });
 
+// Student registration/login without OTP (direct form submit)
+router.post('/register-student', async (req, res, next) => {
+  try {
+    const { name, phone, studyGoal, photo } = req.body;
+    if (!phone) {
+      res.status(400);
+      throw new Error("Phone number is required");
+    }
+
+    const normalizedPhone = normalizePhone(phone);
+    let user = await User.findOne({ phone: normalizedPhone });
+
+    if (user) {
+      // If user exists, login & update details if provided
+      user.role = 'student'; // Ensure correct role
+      if (name) user.name = name;
+      if (studyGoal) user.studyGoal = studyGoal;
+      if (photo) user.photo = photo;
+      await user.save();
+    } else {
+      // Create new student user
+      user = await User.create({
+        name: name || '',
+        phone: normalizedPhone,
+        studyGoal: studyGoal || '',
+        photo: photo || null,
+        role: 'student'
+      });
+    }
+
+    const token = generateToken(user._id);
+    res.status(200).json({
+      success: true,
+      token,
+      role: user.role,
+      user: {
+        id: user._id,
+        name: user.name,
+        phone: user.phone,
+        studyGoal: user.studyGoal,
+        photo: user.photo,
+        savedLibraries: user.savedLibraries
+      },
+      message: "Student logged in successfully"
+    });
+  } catch (error) {
+    next(error);
+  }
+});
+
 module.exports = router;

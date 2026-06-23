@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Image, Alert, Linking } from 'react-native';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Alert, Linking, FlatList } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import { useApp } from '../../../src/context/AppContext';
@@ -8,26 +9,30 @@ import { useApp } from '../../../src/context/AppContext';
 export default function StudentBookings() {
   const router = useRouter();
   const { libraries, savedLibraryIds, theme: tColors, studentData, currentBookings, currentLibrary } = useApp();
-  const saved = libraries.filter((l) => savedLibraryIds.includes(l.id));
+  const saved = libraries.filter((l) => savedLibraryIds.includes(l.id) || savedLibraryIds.includes(l._id));
   const [activeTab, setActiveTab] = useState('bookings'); // 'bookings' | 'saved'
 
   // Find if there is an active booking for this student in currentBookings
   const liveBooking = currentBookings?.find(b => {
-    const studentPhone = String(b.student?.phone || '').replace(/\D/g, '').slice(-10);
+    // If the booking object directly matches student ID or fallback phone/name matching
+    const bStudentId = b.student?._id || b.student?.id || b.student;
+    if (bStudentId && studentData?.id && bStudentId === studentData.id) return true;
+
+    const studentPhone = String(b.student?.phone || b.student_phone || '').replace(/\D/g, '').slice(-10);
     const myPhone = String(studentData?.phone || '').replace(/\D/g, '').slice(-10);
     return (studentPhone && studentPhone === myPhone && studentPhone.length === 10) ||
            (studentData?.name && b.student?.name?.toLowerCase() === studentData?.name?.toLowerCase());
   });
 
   const activeBooking = liveBooking ? {
-    libraryName: currentLibrary?.name || 'Your Library',
+    libraryName: liveBooking.library?.name || currentLibrary?.name || 'Your Library',
     slot: liveBooking.shift,
     expiryDate: new Date(liveBooking.endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }),
     seatNo: liveBooking.seat,
     status: liveBooking.status,
-    image: currentLibrary?.photos?.[0] || libraries[0]?.photos?.[0] || 'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=600&q=80',
-    ownerPhone: currentLibrary?.phone || '9988378077',
-    joinedDate: liveBooking.admissionDate ? new Date(liveBooking.admissionDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : '15 May, 2026',
+    image: liveBooking.library?.photos?.[0] || currentLibrary?.photos?.[0] || libraries[0]?.photos?.[0] || 'https://images.unsplash.com/photo-1568667256549-094345857637?auto=format&fit=crop&w=600&q=80',
+    ownerPhone: liveBooking.library?.phone || currentLibrary?.phone || null,
+    joinedDate: liveBooking.admissionDate ? new Date(liveBooking.admissionDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short', year: 'numeric' }) : 'Unknown',
   } : null;
 
   const s = StyleSheet.create({
@@ -105,22 +110,23 @@ export default function StudentBookings() {
         </TouchableOpacity>
       </View>
 
-      <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={s.scrollContent}>
+      <View style={{ flex: 1, paddingHorizontal: 24, paddingBottom: 10 }}>
         
         {activeTab === 'bookings' ? (
-          // ACTIVE BOOKINGS VIEW
-          !activeBooking ? (
-            <View style={s.empty}>
-              <Ionicons name="calendar-outline" size={64} color="#D1D5DB" />
-              <Text style={s.emptyTitle}>No active bookings</Text>
-              <Text style={s.emptySub}>Aapka koi active seat booking nahi mila. Apne library owner se booking add karne ko kahein ya new library explore karein.</Text>
-              <TouchableOpacity style={s.browseBtn} onPress={() => router.push('/student/tabs/home')}>
-                <Text style={s.browseBtnText}>Explore Libraries</Text>
-              </TouchableOpacity>
-            </View>
-          ) : (
-            <View>
-              <View style={s.ticketCard}>
+          <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }}>
+            {/* ACTIVE BOOKINGS VIEW */}
+            {!activeBooking ? (
+              <View style={s.empty}>
+                <Ionicons name="calendar-outline" size={64} color="#D1D5DB" />
+                <Text style={s.emptyTitle}>No active bookings</Text>
+                <Text style={s.emptySub}>Aapka koi active seat booking nahi mila. Apne library owner se booking add karne ko kahein ya new library explore karein.</Text>
+                <TouchableOpacity style={s.browseBtn} onPress={() => router.push('/student/tabs/home')}>
+                  <Text style={s.browseBtnText}>Explore Libraries</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <View>
+                <View style={s.ticketCard}>
                 <View style={s.ticketHeader}>
                   <View style={s.statusPill}>
                     <View style={s.statusDot} />
@@ -167,6 +173,10 @@ export default function StudentBookings() {
                   <TouchableOpacity 
                     style={s.actionBtnOutline}
                     onPress={() => {
+                      if (!activeBooking.ownerPhone) {
+                        Alert.alert('Unavailable', 'Owner contact number is not available.');
+                        return;
+                      }
                       const rawOwnerPhone = String(activeBooking.ownerPhone).replace(/\D/g, '').replace(/^0+/, '').replace(/^91/, '');
                       Linking.openURL(`https://wa.me/91${rawOwnerPhone}?text=${encodeURIComponent('Hi, I need help with my seat booking.')}`);
                     }}
@@ -178,9 +188,10 @@ export default function StudentBookings() {
                 </View>
               </View>
             </View>
-          )
+            )}
+          </ScrollView>
         ) : (
-          // SAVED LIBRARIES VIEW
+          /* SAVED LIBRARIES VIEW */
           saved.length === 0 ? (
             <View style={s.empty}>
               <Ionicons name="bookmark-outline" size={64} color="#D1D5DB" />
@@ -191,33 +202,38 @@ export default function StudentBookings() {
               </TouchableOpacity>
             </View>
           ) : (
-            saved.map((lib) => (
-              <TouchableOpacity 
-                key={lib.id} 
-                style={s.savedCard} 
-                activeOpacity={0.8}
-                onPress={() => router.push({ pathname: '/student/library-detail', params: { id: lib.id } })}
-              >
-                <Image source={{ uri: lib.photos?.[0] }} style={s.savedImg} />
-                <View style={s.savedInfo}>
-                  <Text style={s.savedName} numberOfLines={1}>{lib.name}</Text>
-                  <View style={s.savedLocation}>
-                    <Ionicons name="location-outline" size={12} color={tColors.textGray} />
-                    <Text style={s.savedLocText} numberOfLines={1}>{lib.address}</Text>
-                  </View>
-                  <View style={s.savedBottom}>
-                    <View style={s.ratingBox}>
-                      <Ionicons name="star" size={12} color="#F5A623" />
-                      <Text style={s.ratingText}>{lib.rating || '4.5'}</Text>
+            <FlatList
+              data={saved}
+              keyExtractor={(item) => item.id || item._id}
+              showsVerticalScrollIndicator={false}
+              contentContainerStyle={{ paddingBottom: 100 }}
+              renderItem={({ item: lib }) => (
+                <TouchableOpacity 
+                  style={s.savedCard} 
+                  activeOpacity={0.8}
+                  onPress={() => router.push({ pathname: '/student/library-detail', params: { id: lib.id || lib._id } })}
+                >
+                  <Image source={{ uri: lib.photos?.[0] }} style={s.savedImg} />
+                  <View style={s.savedInfo}>
+                    <Text style={s.savedName} numberOfLines={1}>{lib.name}</Text>
+                    <View style={s.savedLocation}>
+                      <Ionicons name="location-outline" size={12} color={tColors.textGray} />
+                      <Text style={s.savedLocText} numberOfLines={1}>{lib.address}</Text>
                     </View>
-                    <Text style={s.savedPrice}>₹{lib.halfTime?.fee}/mo</Text>
+                    <View style={s.savedBottom}>
+                      <View style={s.ratingBox}>
+                        <Ionicons name="star" size={12} color="#F5A623" />
+                        <Text style={s.ratingText}>{lib.rating || '4.5'}</Text>
+                      </View>
+                      <Text style={s.savedPrice}>₹{lib.halfTime?.fee || 400}/mo</Text>
+                    </View>
                   </View>
-                </View>
-              </TouchableOpacity>
-            ))
+                </TouchableOpacity>
+              )}
+            />
           )
         )}
-      </ScrollView>
+      </View>
     </View>
   );
 }

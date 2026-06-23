@@ -61,12 +61,13 @@ router.put('/subscription', protect, async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────
 router.put('/profile', protect, async (req, res, next) => {
   try {
-    const { name, phone, photo, upi_id } = req.body;
+    const { name, phone, photo, upi_id, studyGoal } = req.body;
     const updates = {};
     if (name   !== undefined) updates.name   = name.trim();
     if (phone  !== undefined) updates.phone  = phone.trim();
     if (photo  !== undefined) updates.photo  = photo;
     if (upi_id !== undefined) updates.upi_id = upi_id.trim();
+    if (studyGoal !== undefined) updates.studyGoal = studyGoal.trim();
 
     const user = await User.findByIdAndUpdate(req.user._id, updates, { new: true }).select('-__v');
     res.json({ success: true, user, message: 'Profile updated successfully' });
@@ -105,6 +106,24 @@ router.put('/link-library', protect, async (req, res, next) => {
     const library = await Library.findByIdAndUpdate(libraryId, { owner_id: req.user._id }, { new: true });
     if (!library) { res.status(404); throw new Error('Library not found'); }
     res.json({ success: true, message: 'Library linked to your account', library });
+  } catch (error) { next(error); }
+});
+
+// Toggle saving library for student
+router.put('/save-library/:libraryId', protect, async (req, res, next) => {
+  try {
+    const { libraryId } = req.params;
+    const user = await User.findById(req.user._id);
+    if (!user) { res.status(404); throw new Error('User not found'); }
+
+    const index = user.savedLibraries.indexOf(libraryId);
+    if (index > -1) {
+      user.savedLibraries.splice(index, 1);
+    } else {
+      user.savedLibraries.push(libraryId);
+    }
+    await user.save();
+    res.json({ success: true, savedLibraries: user.savedLibraries, message: 'Saved libraries updated' });
   } catch (error) { next(error); }
 });
 

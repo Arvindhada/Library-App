@@ -64,6 +64,24 @@ router.get('/me', protect, async (req, res, next) => {
 });
 
 // ─────────────────────────────────────────────────────────────────
+// @route   GET /api/bookings/public-seats/:libraryId
+// @desc    Get list of occupied/active seat numbers (Public)
+// @access  Public
+// ─────────────────────────────────────────────────────────────────
+router.get('/public-seats/:libraryId', async (req, res, next) => {
+  try {
+    const bookings = await Booking.find({
+      library: req.params.libraryId,
+      status: { $in: ['Active', 'Pending'] }
+    }, 'seat');
+    const occupiedSeats = bookings
+      .map(b => parseInt(b.seat, 10))
+      .filter(num => !isNaN(num));
+    res.json({ success: true, occupiedSeats });
+  } catch (error) { next(error); }
+});
+
+// ─────────────────────────────────────────────────────────────────
 // @route   GET /api/bookings/library/:libraryId
 // @desc    Owner views all bookings for their library
 //          Query: ?status=Requested|Active|Pending|Expired

@@ -378,6 +378,33 @@ export default function OwnerProfile() {
           </View>
         </View>
 
+        {/* ── PRIVACY POLICY LINK ── */}
+        <TouchableOpacity
+          style={{
+            flexDirection: 'row',
+            alignItems: 'center',
+            backgroundColor: '#FFFFFF',
+            borderRadius: 14,
+            padding: 14,
+            marginBottom: 12,
+            borderWidth: 1,
+            borderColor: '#D1CFCA',
+          }}
+          onPress={() => router.push('/privacy-policy')}
+          activeOpacity={0.8}
+        >
+          <View style={{
+            width: 36, height: 36, borderRadius: 10,
+            backgroundColor: '#E8F5F0',
+            justifyContent: 'center', alignItems: 'center',
+            marginRight: 14,
+          }}>
+            <Ionicons name="shield-checkmark-outline" size={18} color="#0F6E56" />
+          </View>
+          <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: '#1A1C1B' }}>Privacy Policy</Text>
+          <Ionicons name="chevron-forward" size={18} color="#6F7A74" />
+        </TouchableOpacity>
+
         {/* ── BOTTOM ROW BUTTONS (SETTINGS & LOGOUT) ── */}
         <View style={s.bottomButtonsRow}>
           <TouchableOpacity 

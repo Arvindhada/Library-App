@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import axios from 'axios';
+import * as Location from 'expo-location';
 import { API_ENDPOINTS } from '../services/apiConfig';
 
 const AppContext = createContext({});
@@ -22,6 +23,52 @@ export const AppProvider = ({ children }) => {
   const [subscriptionPlan, setSubscriptionPlan] = useState(null);
   const [loading, setLoading]             = useState(false);
   const [revenueTransactions, setRevenueTransactions] = useState([]);
+  const [userLocation, setUserLocation]   = useState(null); // { latitude, longitude }
+
+  const fetchUserLocation = async () => {
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        console.warn('Location permission denied by user');
+        return null;
+      }
+      const loc = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      if (loc?.coords) {
+        const coords = { latitude: loc.coords.latitude, longitude: loc.coords.longitude };
+        setUserLocation(coords);
+        await AsyncStorage.setItem('@libconnect_user_location', JSON.stringify(coords));
+        return coords;
+      }
+    } catch (e) {
+      console.warn('Error fetching user location:', e.message);
+      return null;
+    }
+  };
+
+  const fetchLibraries = async () => {
+    try {
+      const res = await axios.get(API_ENDPOINTS.LIBRARIES);
+      const normalizedLibs = (res.data || []).map(l => ({ ...l, id: l._id || l.id }));
+      setLibraries(normalizedLibs);
+      return normalizedLibs;
+    } catch (err) {
+      console.warn('Failed to fetch libraries list:', err.message);
+    }
+  };
+
+  const fetchStudentBookings = async () => {
+    try {
+      const config = await getAuthHeader();
+      const res = await axios.get(API_ENDPOINTS.BOOKINGS + '/me', config);
+      if (res.data?.success) {
+        setCurrentBookings(res.data.bookings || []);
+        return res.data.bookings;
+      }
+    } catch (e) {
+      console.warn('Failed to fetch student bookings:', e.message);
+    }
+    return [];
+  };
 
   const theme = {
     primary: '#1D7151',
@@ -43,16 +90,46 @@ export const AppProvider = ({ children }) => {
   // Load cached data (for instant display before API responds)
   const loadCachedData = async () => {
     try {
-      const [libStored, subStored, ownerStored, revenueStored] = await Promise.all([
+      const [libStored, subStored, ownerStored, revenueStored, studentStored, savedLibsStored, roleStored, tokenStored, locationStored] = await Promise.all([
         AsyncStorage.getItem('@libconnect_library'),
         AsyncStorage.getItem('@libconnect_subscription'),
         AsyncStorage.getItem('@libconnect_owner'),
         AsyncStorage.getItem('@libconnect_revenue'),
+        AsyncStorage.getItem('@libconnect_student'),
+        AsyncStorage.getItem('@libconnect_saved_libraries'),
+        AsyncStorage.getItem('userRole'),
+        AsyncStorage.getItem('userToken'),
+        AsyncStorage.getItem('@libconnect_user_location'),
       ]);
-      if (libStored)     setCurrentLibrary(JSON.parse(libStored));
-      if (subStored)     setSubscriptionPlan(JSON.parse(subStored));
-      if (ownerStored)   setOwnerData(JSON.parse(ownerStored));
-      if (revenueStored) setRevenueTransactions(JSON.parse(revenueStored));
+      if (libStored)         setCurrentLibrary(JSON.parse(libStored));
+      if (subStored)         setSubscriptionPlan(JSON.parse(subStored));
+      if (ownerStored)       setOwnerData(JSON.parse(ownerStored));
+      if (revenueStored)     setRevenueTransactions(JSON.parse(revenueStored));
+      if (studentStored)     setStudentData(JSON.parse(studentStored));
+      if (savedLibsStored)   setSavedLibraryIds(JSON.parse(savedLibsStored));
+      if (roleStored)        setUserRole(roleStored);
+      if (locationStored)    setUserLocation(JSON.parse(locationStored));
+
+      // Trigger location fetch in background on start
+      fetchUserLocation();
+
+      // Fetch libraries list unconditionally on boot (Public Endpoint)
+      fetchLibraries();
+
+      // If token and role exist, load dynamic data
+      if (tokenStored && roleStored) {
+        if (roleStored === 'owner') {
+          fetchDashboardData();
+        } else if (roleStored === 'student') {
+          const config = { headers: { Authorization: `Bearer ${tokenStored}` } };
+          // Fetch student own bookings
+          axios.get(API_ENDPOINTS.BOOKINGS + '/me', config).then(res => {
+            if (res.data?.success) {
+              setCurrentBookings(res.data.bookings || []);
+            }
+          }).catch(() => {});
+        }
+      }
     } catch (e) {
       console.warn('Cache load error:', e.message);
     }
@@ -250,6 +327,36 @@ export const AppProvider = ({ children }) => {
     await AsyncStorage.setItem('@libconnect_owner', JSON.stringify(updated));
   };
 
+  const saveStudentProfile = async ({ name, phone, photo, studyGoal }) => {
+    try {
+      const config = await getAuthHeader();
+      const updates = {};
+      if (name      !== undefined) updates.name      = name;
+      if (phone     !== undefined) updates.phone     = phone;
+      if (photo     !== undefined) updates.photo     = photo;
+      if (studyGoal !== undefined) updates.studyGoal = studyGoal;
+      
+      const res = await axios.put(`${API_ENDPOINTS.USERS}/profile`, updates, config);
+      if (res.data?.success && res.data?.user) {
+        const u = res.data.user;
+        const updated = {
+          ...studentData,
+          id: u.id || u._id || studentData.id,
+          name: u.name || '',
+          phone: u.phone || '',
+          photo: u.photo || null,
+          studyGoal: u.studyGoal || '',
+        };
+        setStudentData(updated);
+        await AsyncStorage.setItem('@libconnect_student', JSON.stringify(updated));
+        return { success: true, user: updated };
+      }
+    } catch (e) {
+      console.warn('Student profile save failed (offline?):', e.message);
+      throw e;
+    }
+  };
+
   // ── Delete Student (Real backend) ──
   const deleteStudent = async (bookingId) => {
     // Remove from UI instantly
@@ -305,16 +412,70 @@ export const AppProvider = ({ children }) => {
     return res.data;
   };
 
-  const vacateSeat = (seatNumber) => {
+  const vacateSeat = async (seatNumber, bookingId) => {
+    // Optimistic UI update — mark the seat as Inactive immediately
     setCurrentBookings(prev =>
       prev.map(b => (parseInt(b.seat, 10) === parseInt(seatNumber, 10) ? { ...b, status: 'Inactive' } : b))
     );
+
+    // Sync to backend — DELETE removes booking and restores library seat count
+    if (bookingId) {
+      try {
+        const config = await getAuthHeader();
+        await axios.delete(`${API_ENDPOINTS.BOOKINGS}/${bookingId}`, config);
+        // Refresh dashboard so owner sees updated counts
+        await fetchDashboardData();
+      } catch (e) {
+        console.warn('Vacate seat backend sync failed:', e.message);
+        // Revert optimistic update on failure
+        await fetchDashboardData();
+      }
+    }
   };
 
-  const toggleSaveLibrary = (id) => {
-    setSavedLibraryIds(prev =>
-      prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id]
-    );
+  const toggleSaveLibrary = async (id) => {
+    // Optimistic UI update
+    setSavedLibraryIds(prev => {
+      const updated = prev.includes(id) ? prev.filter(x => x !== id) : [...prev, id];
+      AsyncStorage.setItem('@libconnect_saved_libraries', JSON.stringify(updated)).catch(() => {});
+      return updated;
+    });
+
+    try {
+      const config = await getAuthHeader();
+      const res = await axios.put(`${API_ENDPOINTS.USERS}/save-library/${id}`, {}, config);
+      if (res.data?.success && res.data?.savedLibraries) {
+        setSavedLibraryIds(res.data.savedLibraries);
+        await AsyncStorage.setItem('@libconnect_saved_libraries', JSON.stringify(res.data.savedLibraries));
+      }
+    } catch (e) {
+      console.warn('Sync toggleSaveLibrary with backend failed:', e.message);
+    }
+  };
+
+  const bookLibrarySpace = async (libraryId, shift, seat) => {
+    try {
+      const config = await getAuthHeader();
+      const res = await axios.post(API_ENDPOINTS.BOOKINGS, {
+        libraryId,
+        shift: shift || 'Full Time',
+        seat: seat ? String(seat) : undefined,
+      }, config);
+      return res.data;
+    } catch (e) {
+      console.warn('Booking request failed:', e.message);
+      throw e;
+    }
+  };
+
+  const getPublicSeats = async (libraryId) => {
+    try {
+      const res = await axios.get(`${API_ENDPOINTS.BOOKINGS}/public-seats/${libraryId}`);
+      return res.data?.occupiedSeats || [];
+    } catch (e) {
+      console.warn('Failed to fetch public seats:', e.message);
+      return [];
+    }
   };
 
   const updateLibrarySeats = (libraryId, vacant, booked) => {
@@ -342,12 +503,78 @@ export const AppProvider = ({ children }) => {
     }
   };
 
+  // ── Student Direct Registration (Form-based, No OTP) ──
+  const registerStudentDirect = async ({ name, phone, studyGoal, photo }) => {
+    setLoading(true);
+    try {
+      const res = await axios.post(`${API_ENDPOINTS.REGISTER}-student`, {
+        name,
+        phone,
+        studyGoal,
+        photo,
+      });
+
+      if (res.data?.success) {
+        const { token, role, user } = res.data;
+        await AsyncStorage.setItem('userToken', token);
+        await AsyncStorage.setItem('userRole', role);
+        
+        const sData = {
+          id: user.id || user._id,
+          name: user.name,
+          phone: user.phone,
+          studyGoal: user.studyGoal,
+          photo: user.photo,
+        };
+        await AsyncStorage.setItem('@libconnect_student', JSON.stringify(sData));
+        setStudentData(sData);
+        setUserRole(role);
+
+        if (user.savedLibraries) {
+          setSavedLibraryIds(user.savedLibraries);
+          await AsyncStorage.setItem('@libconnect_saved_libraries', JSON.stringify(user.savedLibraries));
+        }
+
+        // Fetch libraries list instantly
+        const config = { headers: { Authorization: `Bearer ${token}` } };
+        const libsRes = await axios.get(API_ENDPOINTS.LIBRARIES, config);
+        const normalizedLibs = (libsRes.data || []).map(l => ({ ...l, id: l._id || l.id }));
+        setLibraries(normalizedLibs);
+
+        // Fetch bookings instantly
+        try {
+          const bookRes = await axios.get(API_ENDPOINTS.BOOKINGS + '/me', config);
+          if (bookRes.data?.success) {
+            setCurrentBookings(bookRes.data.bookings || []);
+          }
+        } catch (err) {
+          console.warn('Instant bookings load failed:', err.message);
+        }
+
+        return true;
+      }
+    } catch (e) {
+      console.warn('Student registration backend failed (offline?):', e.message);
+      // Fallback local registration
+      const localUser = { name, phone, studyGoal, photo, id: 'local-' + Date.now() };
+      await AsyncStorage.setItem('userRole', 'student');
+      await AsyncStorage.setItem('@libconnect_student', JSON.stringify(localUser));
+      setStudentData(localUser);
+      setUserRole('student');
+      return true;
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // ── Logout ──
   const logout = async () => {
     setUserRole(null);
     setCurrentLibrary(null);
     setSubscriptionPlan(null);
     setOwnerData({ name: '', phone: '', photo: null, upi_id: '' });
+    setStudentData({ name: '', phone: '', photo: null });
+    setSavedLibraryIds([]);
     setCurrentBookings([]);
     setLibraries([]);
     setRevenueTransactions([]);
@@ -356,6 +583,7 @@ export const AppProvider = ({ children }) => {
         'userToken', 'userRole',
         '@libconnect_library', '@libconnect_subscription',
         '@libconnect_revenue', '@libconnect_owner',
+        '@libconnect_student', '@libconnect_saved_libraries'
       ]);
     } catch (e) {
       console.warn('Logout storage clear error:', e.message);
@@ -379,6 +607,7 @@ export const AppProvider = ({ children }) => {
         registerLibrary,
         updateOwnerLibrary,
         saveOwnerProfile,
+        saveStudentProfile,
         deleteStudent,
         acceptBooking,
         rejectBooking,
@@ -388,8 +617,14 @@ export const AppProvider = ({ children }) => {
         getOwnerLibrary,
         logout,
         revenueTransactions,
-        addRevenueEntry,
         loadRevenueData,
+        registerStudentDirect,
+        bookLibrarySpace,
+        getPublicSeats,
+        userLocation,
+        fetchUserLocation,
+        fetchLibraries,
+        fetchStudentBookings,
       }}
     >
       {children}

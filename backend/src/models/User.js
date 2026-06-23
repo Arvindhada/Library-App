@@ -15,6 +15,7 @@ const userSchema = new mongoose.Schema({
   name: { type: String, default: '' },
   photo: { type: String, default: null }, // URL to profile picture
   upi_id: { type: String, default: '' }, // Payment ID for Owners
+  studyGoal: { type: String, default: '' }, // Student's study target (UPSC, NEET etc)
   
   // Subscription Status
   subscription: {

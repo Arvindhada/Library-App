@@ -1,3 +1,5 @@
+import { Platform } from 'react-native';
+
 // API Configuration
 // ─────────────────────────────────────────────
 // For Android Emulator:     BASE_URL = 'http://10.0.2.2:8000/api'
@@ -5,7 +7,11 @@
 // For Real Physical Device: Use your computer's local WiFi IP below
 // ─────────────────────────────────────────────
 
-const BASE_URL = 'http://192.168.29.77:8000/api'; // Your WiFi IP — real device
+const BASE_URL = Platform.select({
+  android: 'http://10.0.2.2:8000/api',
+  ios: 'http://localhost:8000/api',
+  default: 'http://192.168.29.75:8000/api'
+});
 
 export const API_ENDPOINTS = {
   LOGIN:      `${BASE_URL}/auth/login`,

@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, ScrollView, Image, TouchableOpacity, Dimensions, Linking } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, ScrollView, TouchableOpacity, Dimensions, Linking, Alert, ActivityIndicator } from 'react-native';
+import { Image } from 'expo-image';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons, FontAwesome, MaterialIcons } from '@expo/vector-icons';
 import ImageViewing from 'react-native-image-viewing';
@@ -14,14 +15,66 @@ const { width } = Dimensions.get('window');
 export default function LibraryDetail() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
-  const { libraries, savedLibraryIds, toggleSaveLibrary, theme: tColors } = useApp();
+  const { libraries, savedLibraryIds, toggleSaveLibrary, bookLibrarySpace, getPublicSeats, theme: tColors } = useApp();
   const lib = libraries.find((l) => l.id === id || l._id === id) || libraries[0];
   const [slotType, setSlotType] = useState('morning');
   const [isImageViewVisible, setIsImageViewVisible] = useState(false);
+  const [bookingLoading, setBookingLoading] = useState(false);
   const isSaved = savedLibraryIds.includes(lib.id);
   const isOpen = lib.isOpen24hrs || true;
   const slot = slotType === 'full' ? lib.fullTime : lib.halfTime;
   const facilities = lib.facilities.map((fid) => FACILITIES_LIST.find((f) => f.id === fid)).filter(Boolean);
+
+  const [occupiedSeats, setOccupiedSeats] = useState([]);
+  const [selectedSeat, setSelectedSeat] = useState(null);
+
+  useEffect(() => {
+    const fetchSeats = async () => {
+      if (lib && (lib._id || lib.id)) {
+        const seats = await getPublicSeats(lib._id || lib.id);
+        setOccupiedSeats(seats || []);
+      }
+    };
+    fetchSeats();
+  }, [lib]);
+
+  const handleBookSeat = async () => {
+    if (!selectedSeat) {
+      Alert.alert('Select Seat', 'Kripya seat book karne se pehle niche grid me se koi bhi ek khali seat select karein!');
+      return;
+    }
+    setBookingLoading(true);
+    try {
+      const shiftName = slotType === 'full' ? 'Full Time' : (slotType === 'morning' ? 'Morning' : 'Evening');
+      await bookLibrarySpace(lib._id || lib.id, shiftName, selectedSeat);
+      
+      const ownerNumber = lib.whatsapp || lib.phone;
+      if (ownerNumber) {
+        Alert.alert(
+          'Request Sent! 🚀',
+          `Aapki seat number ${selectedSeat} ki booking request database me save ho gayi hai. Chalo ab WhatsApp par owner ko message karke seat final karte hain!`,
+          [
+            {
+              text: 'Open WhatsApp',
+              onPress: () => openWhatsApp(ownerNumber, lib.name, `${shiftName} (Seat ${selectedSeat})`)
+            }
+          ]
+        );
+      } else {
+        Alert.alert(
+          'Request Sent! 🚀',
+          `Aapki seat number ${selectedSeat} ki booking request database me save ho gayi hai. Owner contact number is currently unavailable.`
+        );
+      }
+    } catch (e) {
+      Alert.alert(
+        'Booking Request Failed',
+        e.response?.data?.message || e.message || 'Back-end connectivity error.'
+      );
+    } finally {
+      setBookingLoading(false);
+    }
+  };
 
   let openTimeStr = '6 AM';
   let closeTimeStr = '10 PM';
@@ -274,6 +327,85 @@ export default function LibraryDetail() {
 
           <View style={s.divider} />
 
+          <Text style={s.secTitle}>Select Seat</Text>
+          
+          {/* Seat Stats Row */}
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 }}>
+            <View style={{ flex: 1, backgroundColor: tColors.primaryLight, padding: 10, borderRadius: 12, alignItems: 'center', marginRight: 8, borderWidth: 1, borderColor: tColors.primary + '20' }}>
+              <Text style={{ fontSize: 16, fontWeight: '800', color: tColors.primary }}>{lib.totalSeats - occupiedSeats.length > 0 ? lib.totalSeats - occupiedSeats.length : 0}</Text>
+              <Text style={{ fontSize: 11, color: tColors.textGray, marginTop: 2 }}>Available</Text>
+            </View>
+            <View style={{ flex: 1, backgroundColor: '#F3F4F6', padding: 10, borderRadius: 12, alignItems: 'center', marginRight: 8, borderWidth: 1, borderColor: '#E5E7EB' }}>
+              <Text style={{ fontSize: 16, fontWeight: '800', color: '#6B7280' }}>{occupiedSeats.length}</Text>
+              <Text style={{ fontSize: 11, color: tColors.textGray, marginTop: 2 }}>Occupied</Text>
+            </View>
+            <View style={{ flex: 1, backgroundColor: '#FFF3E8', padding: 10, borderRadius: 12, alignItems: 'center', borderWidth: 1, borderColor: '#FDDCBB' }}>
+              <Text style={{ fontSize: 16, fontWeight: '800', color: '#C2410C' }}>{lib.totalSeats || lib.total_seats || 40}</Text>
+              <Text style={{ fontSize: 11, color: tColors.textGray, marginTop: 2 }}>Total Seats</Text>
+            </View>
+          </View>
+
+          {/* Scrollable Grid Container */}
+          <View style={{ height: 210, borderWidth: 1, borderColor: tColors.border, borderRadius: 16, backgroundColor: tColors.cardBg, padding: 12, marginBottom: 12 }}>
+            <ScrollView nestedScrollEnabled={true} showsVerticalScrollIndicator={true} contentContainerStyle={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10, justifyContent: 'center' }}>
+              {Array.from({ length: lib.totalSeats || lib.total_seats || 40 }).map((_, index) => {
+                const seatNum = index + 1;
+                const isOccupied = occupiedSeats.includes(seatNum);
+                const isSelected = selectedSeat === seatNum;
+                
+                return (
+                  <TouchableOpacity
+                    key={seatNum}
+                    disabled={isOccupied}
+                    onPress={() => setSelectedSeat(isSelected ? null : seatNum)}
+                    style={{
+                      width: 44,
+                      height: 44,
+                      borderRadius: 8,
+                      borderWidth: 1.5,
+                      borderColor: isOccupied 
+                        ? '#E5E7EB' 
+                        : (isSelected ? tColors.primary : tColors.border),
+                      backgroundColor: isOccupied 
+                        ? '#F3F4F6' 
+                        : (isSelected ? tColors.primaryLight : tColors.cardBg),
+                      alignItems: 'center',
+                      justifyContent: 'center',
+                    }}
+                  >
+                    <Text style={{
+                      fontSize: 12,
+                      fontWeight: '700',
+                      color: isOccupied 
+                        ? '#9CA3AF' 
+                        : (isSelected ? tColors.primary : tColors.textDark),
+                    }}>
+                      {seatNum}
+                    </Text>
+                  </TouchableOpacity>
+                );
+              })}
+            </ScrollView>
+          </View>
+
+          {/* Legend */}
+          <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 16, marginBottom: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ width: 12, height: 12, borderRadius: 3, borderWidth: 1, borderColor: tColors.border, backgroundColor: tColors.cardBg }} />
+              <Text style={{ fontSize: 11, color: tColors.textGray, fontWeight: '500' }}>Available</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: tColors.primaryLight, borderWidth: 1.5, borderColor: tColors.primary }} />
+              <Text style={{ fontSize: 11, color: tColors.textGray, fontWeight: '500' }}>Selected</Text>
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <View style={{ width: 12, height: 12, borderRadius: 3, backgroundColor: '#F3F4F6', borderWidth: 1, borderColor: '#E5E7EB' }} />
+              <Text style={{ fontSize: 11, color: tColors.textGray, fontWeight: '500' }}>Occupied</Text>
+            </View>
+          </View>
+
+          <View style={s.divider} />
+
           <Text style={s.secTitle}>Facilities</Text>
           <View style={s.facilityGrid}>
             {facilities.map((f, i) => {
@@ -298,8 +430,17 @@ export default function LibraryDetail() {
           <Text style={s.bottomBarPriceLabel}>Monthly Fee</Text>
           <Text style={s.bottomBarPriceValue}>₹{slot.fee}</Text>
         </View>
-        <TouchableOpacity style={s.stickyBtn} onPress={() => openWhatsApp(lib.whatsapp, lib.name, slotType === 'full' ? 'Full Time' : (slotType === 'morning' ? 'Morning Slot' : 'Evening Slot'))} activeOpacity={0.9}>
-          <Text style={s.stickyBtnText}>Book Space</Text>
+        <TouchableOpacity 
+          style={s.stickyBtn} 
+          onPress={handleBookSeat} 
+          activeOpacity={0.9}
+          disabled={bookingLoading}
+        >
+          {bookingLoading ? (
+            <ActivityIndicator size="small" color="#FFF" />
+          ) : (
+            <Text style={s.stickyBtnText}>Book Space</Text>
+          )}
         </TouchableOpacity>
       </View>
 

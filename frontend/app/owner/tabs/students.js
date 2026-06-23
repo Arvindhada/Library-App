@@ -28,7 +28,7 @@ const C = {
   red: '#DC2626',
   orange: '#C2410C',
   orangeLight: '#FFF3E8',
-  orangeBorder: '#FDDCBB',
+  orangeBorder: '#FDBA74',
   green: '#16A34A',
 };
 

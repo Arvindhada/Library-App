@@ -162,8 +162,8 @@ export default function SeatManager() {
         { 
           text: 'Vacate', 
           style: 'destructive',
-          onPress: () => {
-            vacateSeat(seat.number);
+          onPress: async () => {
+            await vacateSeat(seat.number, seat.bookingId);
             Alert.alert('Success', `Seat ${seat.label} is now vacant.`);
           }
         }
