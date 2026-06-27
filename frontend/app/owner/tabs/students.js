@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, StatusBar, Linking, Modal, Alert, ActivityIndicator, Dimensions
+  TextInput, StatusBar, Linking, Modal, Alert, ActivityIndicator, Dimensions,
+  Keyboard, TouchableWithoutFeedback, KeyboardAvoidingView, Platform
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -32,12 +33,6 @@ const C = {
   green: '#16A34A',
 };
 
-const DUMMY = [
-  { _id: '1', student: { name: 'Aman Sharma',  phone: '9876543210' }, seat: '12', shift: 'Full Time', status: 'Active',  endDate: '2026-06-10T00:00:00Z', fee: 1000, gender: 'Male', address: '123, Sector 4, Mansarovar, Jaipur', admissionDate: '2026-05-10' },
-  { _id: '2', student: { name: 'Priya Verma',  phone: '9123456789' }, seat: '5',  shift: 'Half Time', status: 'Pending', endDate: '2024-01-01T00:00:00Z',  fee: 600, gender: 'Female', address: 'Plot 42, Vaishali Nagar, Jaipur', admissionDate: '2023-12-01'  },
-  { _id: '3', student: { name: 'Rahul Joshi',  phone: '9988776655' }, seat: '18', shift: 'Full Time', status: 'Active',  endDate: '2026-05-04T00:00:00Z',  fee: 1000, gender: 'Male', address: 'Tonk Road, Jaipur', admissionDate: '2026-04-04' },
-];
-
 const FILTERS = ['All', 'Active', 'Due', 'Expired'];
 
 const getChip = (status, isSoon) => {
@@ -58,7 +53,7 @@ export default function StudentsTab() {
   const insets = useSafeAreaInsets();
   const {
     currentLibrary, currentBookings, setCurrentBookings,
-    fetchDashboardData, addRevenueEntry, deleteStudent, collectFee,
+    fetchDashboardData, addRevenueEntry, deleteStudent, collectFee, revenueTransactions,
   } = useApp();
 
   const [search, setSearch]         = useState('');
@@ -104,9 +99,28 @@ export default function StudentsTab() {
   const getInitials = (name) =>
     name ? name.split(' ').map(n => n[0]).join('').toUpperCase().substring(0, 2) : 'S';
 
-  // Summary stats
-  const totalCollected = rawList.filter(s => s.status === 'Active' && !s.isDue).reduce((a, s) => a + (s.fee || 0), 0);
-  const totalPending   = rawList.filter(s => s.isDue || s.status === 'Pending').reduce((a, s) => a + (s.fee || 0), 0);
+  // Summary stats — use revenueTransactions for accurate collected amount
+  const totalCollected = useMemo(() => {
+    if (!revenueTransactions || revenueTransactions.length === 0) {
+      // Fallback: active students' fee sum
+      return rawList.filter(s => s.status === 'Active' && !s.isDue).reduce((a, s) => a + (s.fee || 0), 0);
+    }
+    const thisMonth = new Date();
+    return revenueTransactions
+      .filter(t => t.type === 'income' && new Date(t.date).getMonth() === thisMonth.getMonth() && new Date(t.date).getFullYear() === thisMonth.getFullYear())
+      .reduce((a, t) => a + (t.amount || 0), 0);
+  }, [revenueTransactions, rawList]);
+
+  const totalPending = useMemo(() => {
+    // Count students whose fee is due or not yet paid
+    return rawList
+      .filter(s => s.isDue || s.status === 'Pending' || s.status === 'Expired')
+      .reduce((a, s) => {
+        const isHalfTime = s.shift === 'Half Time' || s.shift === 'Morning' || s.shift === 'Evening';
+        const fee = s.fee || (isHalfTime ? (currentLibrary?.halfTime?.fee || currentLibrary?.half_time_fee || 0) : (currentLibrary?.fullTime?.fee || currentLibrary?.full_time_fee || 0));
+        return a + fee;
+      }, 0);
+  }, [rawList, currentLibrary]);
 
   const filtered = useMemo(() => rawList.filter(st => {
     const q = search.toLowerCase();
@@ -159,6 +173,8 @@ export default function StudentsTab() {
         // Edit: update via backend
         const config = { headers: { Authorization: `Bearer ${await AsyncStorage.getItem('userToken')}` } };
         const res = await axios.put(`${API_ENDPOINTS.BOOKINGS}/${editId}`, {
+          name: form.name,
+          phone: form.phone,
           seat: form.seat,
           shift: form.plan,
           endDate: d.toISOString(),
@@ -189,22 +205,9 @@ export default function StudentsTab() {
             : (currentLibrary?.fullTime?.fee || currentLibrary?.full_time_fee || 0),
         });
 
-        // If fee paid at admission, also record in revenue
-        if (form.isPaid) {
-          const isHalfPlan = form.plan === 'Half Time' || form.plan === 'Morning' || form.plan === 'Evening';
-          const joinFee = isHalfPlan
-            ? (currentLibrary?.halfTime?.fee || currentLibrary?.half_time_fee || 0)
-            : (currentLibrary?.fullTime?.fee || currentLibrary?.full_time_fee || 0);
-          await addRevenueEntry({
-            type: 'income',
-            category: 'student_fee',
-            amount: joinFee,
-            shift: form.plan,
-            studentName: form.name,
-            method: 'Cash',
-            note: `New admission — Seat ${form.seat}`,
-          });
-        }
+        // NOTE: Backend (booking.js /owner/add-student) already creates a Payment document
+        // when isPaid=true, so we do NOT call addRevenueEntry here to avoid double count.
+        // loadRevenueData() called via fetchDashboardData() will sync it.
 
         // Refresh to get real backend data
         await fetchDashboardData();
@@ -212,7 +215,11 @@ export default function StudentsTab() {
 
       setAddModal(false);
       setForm({ name: '', phone: '', gender: 'Male', address: '', date: new Date().toISOString().split('T')[0], seat: '', plan: 'Full Time', isPaid: true });
-      Alert.alert('✅ Done!', isEdit ? 'Student updated successfully.' : (form.isPaid ? 'Student added (Fee Paid).' : 'Student added on 2-Day Demo.'));
+      
+      // Delay the alert slightly so the modal finishes closing first (prevents UI vibration bug)
+      setTimeout(() => {
+        Alert.alert('✅ Done!', isEdit ? 'Student updated successfully.' : (form.isPaid ? 'Student added (Fee Paid).' : 'Student added on 2-Day Demo.'));
+      }, 300);
     } catch (e) {
       Alert.alert('Error', e?.message || e?.response?.data?.message || 'Could not save student. Check your connection.');
     } finally {
@@ -263,11 +270,15 @@ export default function StudentsTab() {
     }
   };
 
-  // WhatsApp reminder
-
+  // WhatsApp reminder — clean phone number properly
   const sendWA = (phone, name, fee) => {
     const msg = `Hi ${name}, your library fee of ₹${fee} is due. Please pay to continue.`;
-    Linking.openURL(`https://wa.me/91${phone}?text=${encodeURIComponent(msg)}`);
+    // Strip all non-digits, then ensure 91 prefix (no + sign for wa.me)
+    const digits = phone.replace(/\D/g, '');
+    const waNum = digits.startsWith('91') && digits.length === 12 ? digits : `91${digits.slice(-10)}`;
+    Linking.openURL(`https://wa.me/${waNum}?text=${encodeURIComponent(msg)}`).catch(() =>
+      Alert.alert('Error', 'WhatsApp could not be opened.')
+    );
   };
 
   if (!currentLibrary) {
@@ -290,8 +301,9 @@ export default function StudentsTab() {
   }
 
   return (
-    <View style={[s.safe, { paddingTop: insets.top }]}>
-      <StatusBar barStyle="dark-content" backgroundColor={C.bg} />
+    <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+      <View style={[s.safe, { paddingTop: insets.top }]}>
+        <StatusBar barStyle="dark-content" backgroundColor={C.bg} />
 
       <ScrollView style={s.scroll} contentContainerStyle={s.content} showsVerticalScrollIndicator={false}>
 
@@ -478,111 +490,136 @@ export default function StudentsTab() {
         <Ionicons name="add" size={30} color="#FFF" />
       </TouchableOpacity>
 
-      {/* ── ADD STUDENT MODAL (ADVANCED) ── */}
+      {/* ── ADD STUDENT MODAL ── */}
       <Modal visible={addModal} animationType="slide" transparent>
-        <View style={s.overlay}>
-          <View style={[s.modalBox, { maxHeight: '90%', paddingBottom: 20 }]}>
-            <View style={s.modalHead}>
-              <Text style={s.modalTitle}>{isEdit ? 'Edit Student' : 'New Admission'}</Text>
-              <TouchableOpacity onPress={() => setAddModal(false)}>
-                <Ionicons name="close" size={22} color={C.textGray} />
-              </TouchableOpacity>
-            </View>
-            
-            <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 20 }}>
-              {/* Basic Info */}
-              <Text style={s.lbl}>Student Name *</Text>
-              <TextInput style={s.inp} placeholder="Full name" placeholderTextColor={C.textGray} value={form.name} onChangeText={v => setForm(p => ({ ...p, name: v }))} />
-              
-              <Text style={s.lbl}>Phone Number *</Text>
-              <View style={[s.inp, { flexDirection: 'row', alignItems: 'center', paddingVertical: 0 }]}>
-                <TextInput style={{ flex: 1, paddingVertical: 13, fontSize: 15, color: C.textDark }} placeholder="10-digit mobile" placeholderTextColor={C.textGray} keyboardType="phone-pad" maxLength={10} value={form.phone} onChangeText={v => setForm(p => ({ ...p, phone: v }))} />
-                {form.phone.length === 10 && <Ionicons name="checkmark-circle" size={20} color={C.green} />}
-              </View>
-
-              {/* Gender */}
-              <Text style={s.lbl}>Gender</Text>
-              <View style={s.planRow}>
-                {['Male', 'Female'].map(g => (
-                  <TouchableOpacity key={g} style={[s.planChip, form.gender === g && s.planChipAct]} onPress={() => setForm(prev => ({ ...prev, gender: g }))}>
-                    <Text style={[s.planChipTxt, form.gender === g && { color: '#FFF' }]}>{g}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* Address */}
-              <Text style={s.lbl}>Address</Text>
-              <TextInput style={[s.inp, { height: 60, textAlignVertical: 'top' }]} placeholder="Full address" placeholderTextColor={C.textGray} multiline value={form.address} onChangeText={v => setForm(p => ({ ...p, address: v }))} />
-
-              {/* Admission Date */}
-              <Text style={s.lbl}>Admission Date</Text>
-              <TextInput style={s.inp} placeholder="YYYY-MM-DD" placeholderTextColor={C.textGray} value={form.date} onChangeText={v => setForm(p => ({ ...p, date: v }))} />
-
-              {/* Seat & Plan */}
-              <Text style={s.lbl}>Seat Number *</Text>
-              <TextInput style={s.inp} placeholder="e.g. 12 or A4" placeholderTextColor={C.textGray} value={form.seat} onChangeText={v => setForm(p => ({ ...p, seat: v }))} />
-              <Text style={s.lbl}>Shift / Plan</Text>
-              <View style={s.planRow}>
-                {['Full Time', 'Morning', 'Evening'].map(p => (
-                  <TouchableOpacity key={p} style={[s.planChip, form.plan === p && s.planChipAct]} onPress={() => setForm(prev => ({ ...prev, plan: p }))}>
-                    <Text style={[s.planChipTxt, form.plan === p && { color: '#FFF' }]}>{p}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
-
-              {/* Payment Section */}
-              <Text style={s.lbl}>Payment Status</Text>
-              {!isEdit ? (
-                <View style={s.planRow}>
-                  <TouchableOpacity style={[s.planChip, form.isPaid && s.planChipAct]} onPress={() => setForm(p => ({...p, isPaid: true}))}>
-                    <Text style={[s.planChipTxt, form.isPaid && { color: '#FFF' }]}>Paid Now (30 Days)</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity style={[s.planChip, !form.isPaid && s.planChipAct]} onPress={() => setForm(p => ({...p, isPaid: false}))}>
-                    <Text style={[s.planChipTxt, !form.isPaid && { color: '#FFF' }]}>Free Demo (2 Days)</Text>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={s.overlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{ width: '100%' }}
+            >
+              <View style={[s.modalBox, { maxHeight: '90%', paddingBottom: 20 }]}>
+                <View style={s.modalHead}>
+                  <Text style={s.modalTitle}>{isEdit ? 'Edit Student' : 'New Admission'}</Text>
+                  <TouchableOpacity onPress={() => { setAddModal(false); Keyboard.dismiss(); }}>
+                    <Ionicons name="close" size={22} color={C.textGray} />
                   </TouchableOpacity>
                 </View>
-              ) : (
-                <Text style={{ fontSize: 13, color: C.textGray, fontStyle: 'italic', marginBottom: 20 }}>Payment status can be updated via the Collect Fee button.</Text>
-              )}
+                
+                <ScrollView showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 100 }} keyboardShouldPersistTaps="handled">
+                  {/* Basic Info */}
+                  <Text style={s.lbl}>Student Name *</Text>
+                  <TextInput style={s.inp} placeholder="Full name" placeholderTextColor={C.textGray} value={form.name} onChangeText={v => setForm(p => ({ ...p, name: v }))} returnKeyType="next" />
+                  
+                  <Text style={s.lbl}>Phone Number *</Text>
+                  <View style={[s.inp, { flexDirection: 'row', alignItems: 'center', paddingVertical: 0 }]}>
+                    <TextInput style={{ flex: 1, paddingVertical: 13, fontSize: 15, color: C.textDark }} placeholder="10-digit mobile" placeholderTextColor={C.textGray} keyboardType="phone-pad" maxLength={10} value={form.phone} onChangeText={v => setForm(p => ({ ...p, phone: v }))} returnKeyType="next" />
+                    {form.phone.length === 10 && <Ionicons name="checkmark-circle" size={20} color={C.green} />}
+                  </View>
 
-              <TouchableOpacity style={s.saveBtn} onPress={handleAdd} activeOpacity={0.85} disabled={saving}>
-                {saving ? <ActivityIndicator color="#FFF" /> : <Text style={s.saveTxt}>{isEdit ? 'Save Changes' : (form.isPaid ? 'Add & Record Payment' : 'Start 2-Day Demo')}</Text>}
-              </TouchableOpacity>
-            </ScrollView>
+                  {/* Gender */}
+                  <Text style={s.lbl}>Gender</Text>
+                  <View style={s.planRow}>
+                    {['Male', 'Female'].map(g => (
+                      <TouchableOpacity key={g} style={[s.planChip, form.gender === g && s.planChipAct]} onPress={() => { Keyboard.dismiss(); setForm(prev => ({ ...prev, gender: g })); }}>
+                        <Text style={[s.planChipTxt, form.gender === g && { color: '#FFF' }]}>{g}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {/* Address */}
+                  <Text style={s.lbl}>Address</Text>
+                  <TextInput style={[s.inp, { height: 60, textAlignVertical: 'top' }]} placeholder="Full address" placeholderTextColor={C.textGray} multiline value={form.address} onChangeText={v => setForm(p => ({ ...p, address: v }))} />
+
+                  {/* Admission Date */}
+                  <Text style={s.lbl}>Admission Date</Text>
+                  <TextInput style={s.inp} placeholder="YYYY-MM-DD" placeholderTextColor={C.textGray} value={form.date} onChangeText={v => setForm(p => ({ ...p, date: v }))} returnKeyType="next" />
+
+                  {/* Seat & Plan */}
+                  <Text style={s.lbl}>Seat Number *</Text>
+                  <TextInput style={s.inp} placeholder="e.g. 12 or A4" placeholderTextColor={C.textGray} value={form.seat} onChangeText={v => setForm(p => ({ ...p, seat: v }))} returnKeyType="done" onSubmitEditing={Keyboard.dismiss} />
+                  <Text style={s.lbl}>Shift / Plan</Text>
+                  <View style={s.planRow}>
+                    {['Full Time', 'Morning', 'Evening'].map(p => (
+                      <TouchableOpacity key={p} style={[s.planChip, form.plan === p && s.planChipAct]} onPress={() => { Keyboard.dismiss(); setForm(prev => ({ ...prev, plan: p })); }}>
+                        <Text style={[s.planChipTxt, form.plan === p && { color: '#FFF' }]}>{p}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+
+                  {/* Payment Section */}
+                  <Text style={s.lbl}>Payment Status</Text>
+                  {!isEdit ? (
+                    <View style={s.planRow}>
+                      <TouchableOpacity style={[s.planChip, form.isPaid && s.planChipAct]} onPress={() => { Keyboard.dismiss(); setForm(p => ({...p, isPaid: true})); }}>
+                        <Text style={[s.planChipTxt, form.isPaid && { color: '#FFF' }]}>Paid Now (30 Days)</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={[s.planChip, !form.isPaid && s.planChipAct]} onPress={() => { Keyboard.dismiss(); setForm(p => ({...p, isPaid: false})); }}>
+                        <Text style={[s.planChipTxt, !form.isPaid && { color: '#FFF' }]}>Free Demo (2 Days)</Text>
+                      </TouchableOpacity>
+                    </View>
+                  ) : (
+                    <Text style={{ fontSize: 13, color: C.textGray, fontStyle: 'italic', marginBottom: 20 }}>Payment status can be updated via the Collect Fee button.</Text>
+                  )}
+
+                  <TouchableOpacity style={s.saveBtn} onPress={() => { Keyboard.dismiss(); handleAdd(); }} activeOpacity={0.85} disabled={saving}>
+                    {saving ? <ActivityIndicator color="#FFF" /> : <Text style={s.saveTxt}>{isEdit ? 'Save Changes' : (form.isPaid ? 'Add & Record Payment' : 'Start 2-Day Demo')}</Text>}
+                  </TouchableOpacity>
+                </ScrollView>
+              </View>
+            </KeyboardAvoidingView>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
 
       {/* ── COLLECT PAYMENT MODAL ── */}
       <Modal visible={payModal} animationType="slide" transparent>
-        <View style={s.overlay}>
-          <View style={s.modalBox}>
-            <View style={s.modalHead}>
-              <Text style={s.modalTitle}>Collect Payment</Text>
-              <TouchableOpacity onPress={() => {
-                setPayModal(false);
-                setPayForm({ amount: '', method: 'UPI' });
-              }}>
-                <Ionicons name="close" size={22} color={C.textGray} />
-              </TouchableOpacity>
-            </View>
-            <Text style={s.lbl}>Amount (₹)</Text>
-            <TextInput style={s.inp} placeholder="Enter amount" placeholderTextColor={C.textGray} keyboardType="numeric" value={payForm.amount} onChangeText={v => setPayForm(p => ({ ...p, amount: v }))} />
-            <Text style={s.lbl}>Payment Method</Text>
-            <View style={s.planRow}>
-              {['UPI', 'Cash', 'Online'].map(m => (
-                <TouchableOpacity key={m} style={[s.planChip, payForm.method === m && s.planChipAct]} onPress={() => setPayForm(p => ({ ...p, method: m }))}>
-                  <Text style={[s.planChipTxt, payForm.method === m && { color: '#FFF' }]}>{m}</Text>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={s.overlay}>
+            <KeyboardAvoidingView
+              behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+              style={{ width: '100%' }}
+            >
+              <View style={s.modalBox}>
+                <View style={s.modalHead}>
+                  <Text style={s.modalTitle}>Collect Payment</Text>
+                  <TouchableOpacity onPress={() => {
+                    setPayModal(false);
+                    setPayForm({ amount: '', method: 'UPI' });
+                    Keyboard.dismiss();
+                  }}>
+                    <Ionicons name="close" size={22} color={C.textGray} />
+                  </TouchableOpacity>
+                </View>
+                <Text style={s.lbl}>Amount (₹)</Text>
+                <TextInput
+                  style={s.inp}
+                  placeholder="Enter amount"
+                  placeholderTextColor={C.textGray}
+                  keyboardType="numeric"
+                  value={payForm.amount}
+                  onChangeText={v => setPayForm(p => ({ ...p, amount: v }))}
+                  returnKeyType="done"
+                  onSubmitEditing={Keyboard.dismiss}
+                />
+                <Text style={s.lbl}>Payment Method</Text>
+                <View style={s.planRow}>
+                  {['UPI', 'Cash', 'Online'].map(m => (
+                    <TouchableOpacity key={m} style={[s.planChip, payForm.method === m && s.planChipAct]} onPress={() => { Keyboard.dismiss(); setPayForm(p => ({ ...p, method: m })); }}>
+                      <Text style={[s.planChipTxt, payForm.method === m && { color: '#FFF' }]}>{m}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <TouchableOpacity style={s.saveBtn} onPress={() => { Keyboard.dismiss(); handleCollect(); }} activeOpacity={0.85} disabled={saving}>
+                  {saving ? <ActivityIndicator color="#FFF" /> : <Text style={s.saveTxt}>Record Payment</Text>}
                 </TouchableOpacity>
-              ))}
-            </View>
-            <TouchableOpacity style={s.saveBtn} onPress={handleCollect} activeOpacity={0.85} disabled={saving}>
-              {saving ? <ActivityIndicator color="#FFF" /> : <Text style={s.saveTxt}>Record Payment</Text>}
-            </TouchableOpacity>
+              </View>
+            </KeyboardAvoidingView>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
-    </View>
+      </View>
+    </TouchableWithoutFeedback>
   );
 }
 

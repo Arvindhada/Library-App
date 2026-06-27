@@ -17,6 +17,18 @@ async function assertOwner(bookingId, userId, res) {
   return { booking, library };
 }
 
+// Helper: override populated student name/phone with booking-specific local copy
+const formatBookings = (bookings) => {
+  return bookings.map(b => {
+    const bookingObj = b.toObject ? b.toObject() : b;
+    if (bookingObj.student) {
+      if (bookingObj.studentName) bookingObj.student.name = bookingObj.studentName;
+      if (bookingObj.studentPhone) bookingObj.student.phone = bookingObj.studentPhone;
+    }
+    return bookingObj;
+  });
+};
+
 // ─────────────────────────────────────────────────────────────────
 // @route   POST /api/bookings
 // @desc    Student requests to book a seat
@@ -102,7 +114,7 @@ router.get('/library/:libraryId', protect, async (req, res, next) => {
       .populate('student', 'name phone photo')
       .sort({ createdAt: -1 });
 
-    res.json({ success: true, bookings });
+    res.json({ success: true, bookings: formatBookings(bookings) });
   } catch (error) { next(error); }
 });
 
@@ -125,7 +137,7 @@ router.get('/', protect, async (req, res, next) => {
       .populate('student', 'name phone photo gender address')
       .sort({ createdAt: -1 });
 
-    res.json({ success: true, bookings });
+    res.json({ success: true, bookings: formatBookings(bookings) });
   } catch (error) { next(error); }
 });
 
@@ -138,6 +150,9 @@ router.put('/:id/accept', protect, async (req, res, next) => {
   try {
     const { booking, library } = await assertOwner(req.params.id, req.user._id, res);
 
+    // Only decrease seats if not already counted
+    const alreadyCounted = ['Pending', 'Active'].includes(booking.status);
+
     const d = new Date();
     d.setDate(d.getDate() + 2); // 2-day demo period
 
@@ -147,11 +162,16 @@ router.put('/:id/accept', protect, async (req, res, next) => {
     if (req.body.shift) booking.shift = req.body.shift;
     await booking.save();
 
-    // Decrease available seats
-    library.available_seats = Math.max(0, (library.available_seats || 0) - 1);
-    library.vacantSeats     = library.available_seats;
-    library.bookedSeats     = (library.total_seats || 0) - library.available_seats;
-    await library.save();
+    // Decrease available seats ONLY if not already counted — use atomic $inc to avoid pre-save hook conflict
+    if (!alreadyCounted) {
+      const newAvailable = Math.max(0, (library.available_seats || 0) - 1);
+      await Library.findByIdAndUpdate(library._id, {
+        available_seats: newAvailable,
+        vacantSeats:     newAvailable,
+        bookedSeats:     (library.total_seats || 0) - newAvailable,
+        totalSeats:      library.total_seats || 0,
+      });
+    }
 
     const populated = await Booking.findById(booking._id).populate('student', 'name phone photo');
     res.json({ success: true, booking: populated, message: 'Booking accepted (2-Day Demo). Collect fee to activate.' });
@@ -171,12 +191,15 @@ router.put('/:id/reject', protect, async (req, res, next) => {
     booking.status = 'Rejected';
     await booking.save();
 
-    // Restore seat count only if was previously active/pending
+    // Restore seat count only if was previously active/pending — atomic update
     if (wasActive) {
-      library.available_seats = (library.available_seats || 0) + 1;
-      library.vacantSeats     = library.available_seats;
-      library.bookedSeats     = Math.max(0, (library.total_seats || 0) - library.available_seats);
-      await library.save();
+      const newAvailable = (library.available_seats || 0) + 1;
+      await Library.findByIdAndUpdate(library._id, {
+        available_seats: newAvailable,
+        vacantSeats:     newAvailable,
+        bookedSeats:     Math.max(0, (library.total_seats || 0) - newAvailable),
+        totalSeats:      library.total_seats || 0,
+      });
     }
 
     res.json({ success: true, message: 'Booking rejected.' });
@@ -253,10 +276,16 @@ router.put('/:id', protect, async (req, res, next) => {
     updatable.forEach(field => {
       if (req.body[field] !== undefined) booking[field] = req.body[field];
     });
+    
+    // Update the student's name and phone locally on the booking
+    if (req.body.name) booking.studentName = req.body.name;
+    if (req.body.phone) booking.studentPhone = req.body.phone;
+
     await booking.save();
 
     const populated = await Booking.findById(booking._id).populate('student', 'name phone');
-    res.json({ success: true, booking: populated, message: 'Booking updated.' });
+    const formattedBooking = formatBookings([populated])[0];
+    res.json({ success: true, booking: formattedBooking, message: 'Booking updated.' });
   } catch (error) { next(error); }
 });
 
@@ -303,6 +332,8 @@ router.post('/owner/add-student', protect, async (req, res, next) => {
     const booking = await Booking.create({
       student: student._id,
       library: libraryId,
+      studentName: name,         // Save local copy
+      studentPhone: phone,       // Save local copy
       seat,
       shift:     shift     || 'Full Time',
       startDate: start,
@@ -338,13 +369,16 @@ router.post('/owner/add-student', protect, async (req, res, next) => {
       }
     }
 
-    // 5. Update library seat count
+    // 5. Update library seat count — atomic to avoid pre-save hook double-subtract
     const library = await Library.findById(libraryId);
     if (library) {
-      library.available_seats = Math.max(0, (library.available_seats || 0) - 1);
-      library.vacantSeats     = library.available_seats;
-      library.bookedSeats     = (library.total_seats || 0) - library.available_seats;
-      await library.save();
+      const newAvailable = Math.max(0, (library.available_seats || 0) - 1);
+      await Library.findByIdAndUpdate(libraryId, {
+        available_seats: newAvailable,
+        vacantSeats:     newAvailable,
+        bookedSeats:     (library.total_seats || 0) - newAvailable,
+        totalSeats:      library.total_seats || 0,
+      });
     }
 
     const populated = await Booking.findById(booking._id).populate('student', 'name phone');
@@ -364,10 +398,13 @@ router.delete('/:id', protect, async (req, res, next) => {
 
     const library = await Library.findById(booking.library);
     if (library && ['Active', 'Pending'].includes(booking.status)) {
-      library.available_seats = (library.available_seats || 0) + 1;
-      library.vacantSeats     = library.available_seats;
-      library.bookedSeats     = Math.max(0, (library.total_seats || 0) - library.available_seats);
-      await library.save();
+      const newAvailable = (library.available_seats || 0) + 1;
+      await Library.findByIdAndUpdate(booking.library, {
+        available_seats: newAvailable,
+        vacantSeats:     newAvailable,
+        bookedSeats:     Math.max(0, (library.total_seats || 0) - newAvailable),
+        totalSeats:      library.total_seats || 0,
+      });
     }
 
     await Booking.findByIdAndDelete(req.params.id);

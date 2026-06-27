@@ -38,6 +38,8 @@ const bookingSchema = new mongoose.Schema({
   isPaid: { type: Boolean, default: false },
 
   // Extra fields for owner-added students
+  studentName:   { type: String }, // Local copy to prevent overwriting global user
+  studentPhone:  { type: String }, // Local copy of phone
   gender:        { type: String, default: 'Male' },
   address:       { type: String, default: '' },
   fee:           { type: Number, default: 0 },

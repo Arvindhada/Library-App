@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  TextInput, Alert, Switch, Image, StatusBar, Linking, Modal
+  TextInput, Alert, Switch, Image, StatusBar, Linking, Modal, Keyboard,
+  TouchableWithoutFeedback, KeyboardAvoidingView, Platform
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -254,7 +255,7 @@ export default function OwnerProfile() {
           </View>
         </View>
 
-        {/* ── DOUBLE BUTTONS (EDIT PROFILE & EDIT LIBRARY) ── */}
+        {/* ── DOUBLE BUTTONS (EDIT PROFILE & ADD/EDIT LIBRARY) ── */}
         <View style={s.doubleButtonsRow}>
           <TouchableOpacity 
             style={s.btnOrange} 
@@ -269,23 +270,33 @@ export default function OwnerProfile() {
             <Text style={s.btnOrangeTxt}>Edit Profile</Text>
           </TouchableOpacity>
 
-          <TouchableOpacity 
-            style={s.btnGreen} 
-            onPress={() => router.push('/owner/edit-library')}
-            activeOpacity={0.8}
-          >
-            <Text style={s.btnGreenTxt}>Edit Library</Text>
-          </TouchableOpacity>
+          {currentLibrary ? (
+            <TouchableOpacity 
+              style={s.btnGreen} 
+              onPress={() => router.push('/owner/edit-library')}
+              activeOpacity={0.8}
+            >
+              <Text style={s.btnGreenTxt}>Edit Library</Text>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity 
+              style={s.btnGreen} 
+              onPress={() => router.push('/owner/add-library')}
+              activeOpacity={0.8}
+            >
+              <Text style={s.btnGreenTxt}>+ Add Library</Text>
+            </TouchableOpacity>
+          )}
         </View>
 
-        {/* ── MY LIBRARY INFO CARD ── */}
+        {/* ── MY LIBRARY INFO & PERFORMANCE CARDS ── */}
         <View style={s.infoCard}>
           <Text style={s.infoCardTitle}>My Library Info</Text>
           
           <View style={s.infoRow}>
             <Text style={s.infoLabel}>Address</Text>
             <Text style={s.infoValue} numberOfLines={2}>
-              {currentLibrary?.address || 'Mansarovar, Jaipur'}
+              {currentLibrary ? (currentLibrary.address || 'Not Available') : 'Not Added Yet'}
             </Text>
           </View>
           <View style={s.cardDivider} />
@@ -293,24 +304,23 @@ export default function OwnerProfile() {
           <View style={s.infoRow}>
             <Text style={s.infoLabel}>Timing</Text>
             <Text style={s.infoValue}>
-              {currentLibrary?.timings || '6 AM – 10 PM'}
+              {currentLibrary ? (currentLibrary.timings || 'Not Available') : 'Not Added Yet'}
             </Text>
           </View>
           <View style={s.cardDivider} />
 
           <View style={s.infoRow}>
             <Text style={s.infoLabel}>Total Seats</Text>
-            <Text style={s.infoValue}>{totalSeats}</Text>
+            <Text style={s.infoValue}>{currentLibrary ? totalSeats : '0'}</Text>
           </View>
           <View style={s.cardDivider} />
 
           <View style={s.infoRow}>
             <Text style={s.infoLabel}>Rating</Text>
-            <Text style={s.infoValue}>★ 4.5 (89 reviews)</Text>
+            <Text style={s.infoValue}>{currentLibrary ? '★ 4.5 (89 reviews)' : 'No Rating'}</Text>
           </View>
         </View>
 
-        {/* ── MONTHLY PERFORMANCE CARD ── */}
         <View style={s.infoCard}>
           <Text style={s.infoCardTitle}>Monthly Performance</Text>
 
@@ -318,14 +328,14 @@ export default function OwnerProfile() {
             {/* Revenue */}
             <View style={s.gridItem}>
               <Text style={[s.gridVal, { color: C.orange }]}>
-                ₹{totalRevenue.toLocaleString('en-IN')}
+                ₹{currentLibrary ? totalRevenue.toLocaleString('en-IN') : '0'}
               </Text>
               <Text style={s.gridLabel}>Revenue</Text>
             </View>
 
             {/* Bookings */}
             <View style={s.gridItem}>
-              <Text style={s.gridVal}>{totalBookings}</Text>
+              <Text style={s.gridVal}>{currentLibrary ? totalBookings : '0'}</Text>
               <Text style={s.gridLabel}>Bookings</Text>
             </View>
           </View>
@@ -333,7 +343,7 @@ export default function OwnerProfile() {
           <View style={s.gridRow}>
             {/* Occupancy */}
             <View style={s.gridItem}>
-              <Text style={[s.gridVal, { color: C.primary }]}>{occupancyRate}%</Text>
+              <Text style={[s.gridVal, { color: C.primary }]}>{currentLibrary ? occupancyRate : '0'}%</Text>
               <Text style={s.gridLabel}>Occupancy</Text>
             </View>
 
@@ -343,7 +353,7 @@ export default function OwnerProfile() {
               activeOpacity={0.7} 
               onPress={handleRemindDueStudents}
             >
-              <Text style={[s.gridVal, { color: C.red }]}>{pendingCount}</Text>
+              <Text style={[s.gridVal, { color: C.red }]}>{currentLibrary ? pendingCount : '0'}</Text>
               <View style={s.duePaymentsLabelWrap}>
                 <Text style={s.gridLabel}>Due Payments</Text>
                 <Ionicons name="logo-whatsapp" size={13} color={C.red} style={{ marginLeft: 4 }} />
@@ -378,32 +388,7 @@ export default function OwnerProfile() {
           </View>
         </View>
 
-        {/* ── PRIVACY POLICY LINK ── */}
-        <TouchableOpacity
-          style={{
-            flexDirection: 'row',
-            alignItems: 'center',
-            backgroundColor: '#FFFFFF',
-            borderRadius: 14,
-            padding: 14,
-            marginBottom: 12,
-            borderWidth: 1,
-            borderColor: '#D1CFCA',
-          }}
-          onPress={() => router.push('/privacy-policy')}
-          activeOpacity={0.8}
-        >
-          <View style={{
-            width: 36, height: 36, borderRadius: 10,
-            backgroundColor: '#E8F5F0',
-            justifyContent: 'center', alignItems: 'center',
-            marginRight: 14,
-          }}>
-            <Ionicons name="shield-checkmark-outline" size={18} color="#0F6E56" />
-          </View>
-          <Text style={{ flex: 1, fontSize: 15, fontWeight: '600', color: '#1A1C1B' }}>Privacy Policy</Text>
-          <Ionicons name="chevron-forward" size={18} color="#6F7A74" />
-        </TouchableOpacity>
+        {/* ── PRIVACY POLICY LINK (Moved to Settings) ── */}
 
         {/* ── BOTTOM ROW BUTTONS (SETTINGS & LOGOUT) ── */}
         <View style={s.bottomButtonsRow}>
@@ -499,7 +484,7 @@ export default function OwnerProfile() {
               style={s.settingsItem} 
               onPress={() => {
                 setSettingsModal(false);
-                Alert.alert('Privacy Policy', 'Your student bookings data is securely stored and not shared with third-party vendors.');
+                router.push('/privacy-policy');
               }}
             >
               <Text style={s.settingLabel}>Privacy Policy</Text>
@@ -511,134 +496,148 @@ export default function OwnerProfile() {
 
       {/* ── EDIT PROFILE MODAL ── */}
       <Modal visible={editProfileModal} animationType="slide" transparent>
-        <View style={s.overlay}>
-          <View style={s.modalBox}>
-            <View style={s.modalHead}>
-              <Text style={s.modalTitle}>Edit Profile</Text>
-              <TouchableOpacity onPress={() => setEditProfileModal(false)}>
-                <Ionicons name="close" size={24} color={C.textDark} />
-              </TouchableOpacity>
-            </View>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={s.overlay}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%' }}>
+              <View style={s.modalBox}>
+                <View style={s.modalHead}>
+                  <Text style={s.modalTitle}>Edit Profile</Text>
+                  <TouchableOpacity onPress={() => { setEditProfileModal(false); Keyboard.dismiss(); }}>
+                    <Ionicons name="close" size={24} color={C.textDark} />
+                  </TouchableOpacity>
+                </View>
 
-            <Text style={s.fieldLabel}>Owner Name</Text>
-            <TextInput
-              style={s.input}
-              value={name}
-              onChangeText={setName}
-              placeholder="Your full name"
-              placeholderTextColor={C.textGray}
-            />
+                <Text style={s.fieldLabel}>Owner Name</Text>
+                <TextInput
+                  style={s.input}
+                  value={name}
+                  onChangeText={setName}
+                  placeholder="Your full name"
+                  placeholderTextColor={C.textGray}
+                  returnKeyType="next"
+                />
 
-            <Text style={s.fieldLabel}>Phone Number</Text>
-            <TextInput
-              style={s.input}
-              value={phone}
-              onChangeText={setPhone}
-              placeholder="Phone number"
-              placeholderTextColor={C.textGray}
-              keyboardType="phone-pad"
-            />
+                <Text style={s.fieldLabel}>Phone Number</Text>
+                <TextInput
+                  style={s.input}
+                  value={phone}
+                  onChangeText={setPhone}
+                  placeholder="Phone number"
+                  placeholderTextColor={C.textGray}
+                  keyboardType="phone-pad"
+                  returnKeyType="next"
+                />
 
-            <Text style={s.fieldLabel}>UPI ID (for payments)</Text>
-            <TextInput
-              style={s.input}
-              value={upiId}
-              onChangeText={setUpiId}
-              placeholder="e.g. yourname@upi"
-              placeholderTextColor={C.textGray}
-              autoCapitalize="none"
-              keyboardType="email-address"
-            />
+                <Text style={s.fieldLabel}>UPI ID (for payments)</Text>
+                <TextInput
+                  style={s.input}
+                  value={upiId}
+                  onChangeText={setUpiId}
+                  placeholder="e.g. yourname@upi"
+                  placeholderTextColor={C.textGray}
+                  autoCapitalize="none"
+                  keyboardType="email-address"
+                  returnKeyType="done"
+                  onSubmitEditing={Keyboard.dismiss}
+                />
 
-            <TouchableOpacity style={s.saveProfileBtn} onPress={handleSaveProfile} activeOpacity={0.85}>
-              <Text style={s.saveProfileBtnTxt}>Save Changes</Text>
-            </TouchableOpacity>
+                <TouchableOpacity style={s.saveProfileBtn} onPress={() => { Keyboard.dismiss(); handleSaveProfile(); }} activeOpacity={0.85}>
+                  <Text style={s.saveProfileBtnTxt}>Save Changes</Text>
+                </TouchableOpacity>
+              </View>
+            </KeyboardAvoidingView>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
 
       {/* ── UPGRADE PLAN MODAL ── */}
       <Modal visible={upgradeModal} animationType="slide" transparent>
-        <View style={s.overlay}>
-          <View style={[s.modalBox, { height: '85%' }]}>
-            <View style={s.modalHead}>
-              <Text style={s.modalTitle}>{paymentVerifying ? 'Verify Payment' : 'Upgrade Plan'}</Text>
-              <TouchableOpacity onPress={() => { setUpgradeModal(false); setPaymentVerifying(false); }}>
-                <Ionicons name="close" size={24} color={C.textDark} />
-              </TouchableOpacity>
-            </View>
-            <ScrollView showsVerticalScrollIndicator={false}>
-              {!paymentVerifying ? (
-                <View>
-                  <Text style={{ fontSize: 14, color: C.textGray, marginBottom: 16 }}>Upgrade your plan. Remaining days will be added to your new plan automatically.</Text>
-                  
-                  {/* Monthly Card */}
-                  <View style={s.subPlanCard}>
-                    <Text style={s.planCardTitle}>Monthly Plan</Text>
-                    <Text style={s.planCardPrice}>₹499<Text style={{ fontSize: 14, fontWeight: 'normal', color: C.textGray }}>/month</Text></Text>
-                    <TouchableOpacity style={s.upiBtn} onPress={() => { setSelectedPlan('monthly'); setPaymentVerifying(true); }}>
-                      <Text style={s.upiBtnTxt}>Start Monthly Plan</Text>
-                    </TouchableOpacity>
-                    <Text style={s.subBtnText}>Pay ₹499 via UPI</Text>
-                  </View>
-                  
-                  {/* Yearly Card */}
-                  <View style={[s.subPlanCard, { borderColor: C.primary, borderWidth: 1.5 }]}>
-                    <Text style={s.planCardTitle}>Yearly Plan</Text>
-                    <Text style={s.planCardPrice}>₹4,999<Text style={{ fontSize: 14, fontWeight: 'normal', color: C.textGray }}>/year</Text></Text>
-                    <TouchableOpacity style={s.upiBtn} onPress={() => { setSelectedPlan('yearly'); setPaymentVerifying(true); }}>
-                      <Text style={s.upiBtnTxt}>Start Yearly Plan</Text>
-                    </TouchableOpacity>
-                    <Text style={s.subBtnText}>Save ₹991 + 2 Months Free</Text>
-                  </View>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={s.overlay}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%' }}>
+              <View style={[s.modalBox, { height: '85%' }]}>
+                <View style={s.modalHead}>
+                  <Text style={s.modalTitle}>{paymentVerifying ? 'Verify Payment' : 'Upgrade Plan'}</Text>
+                  <TouchableOpacity onPress={() => { setUpgradeModal(false); setPaymentVerifying(false); Keyboard.dismiss(); }}>
+                    <Ionicons name="close" size={24} color={C.textDark} />
+                  </TouchableOpacity>
                 </View>
-              ) : (
-                <View>
-                  <Text style={s.subText}>
-                    Complete your payment of ₹{selectedPlan === 'monthly' ? '499' : '4,999'} for the {selectedPlan === 'monthly' ? 'Monthly' : 'Yearly'} subscription and enter UTR.
-                  </Text>
-                  
-                  <View style={{ marginBottom: 24, marginTop: 16 }}>
-                    <Text style={{ fontSize: 14, color: C.textDark, fontWeight: '700', marginBottom: 12 }}>Step 1: Pay directly via:</Text>
-                    <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 10 }}>
-                      <TouchableOpacity style={[s.upiAppBtn, { backgroundColor: '#5F259F' }]} onPress={() => handleUpiPay('phonepe')}>
-                        <Text style={s.upiAppBtnTxt}>PhonePe</Text>
+                <ScrollView showsVerticalScrollIndicator={false} keyboardShouldPersistTaps="handled">
+                  {!paymentVerifying ? (
+                    <View>
+                      <Text style={{ fontSize: 14, color: C.textGray, marginBottom: 16 }}>Upgrade your plan. Remaining days will be added to your new plan automatically.</Text>
+                      
+                      {/* Monthly Card */}
+                      <View style={s.subPlanCard}>
+                        <Text style={s.planCardTitle}>Monthly Plan</Text>
+                        <Text style={s.planCardPrice}>₹499<Text style={{ fontSize: 14, fontWeight: 'normal', color: C.textGray }}>/month</Text></Text>
+                        <TouchableOpacity style={s.upiBtn} onPress={() => { setSelectedPlan('monthly'); setPaymentVerifying(true); }}>
+                          <Text style={s.upiBtnTxt}>Start Monthly Plan</Text>
+                        </TouchableOpacity>
+                        <Text style={s.subBtnText}>Pay ₹499 via UPI</Text>
+                      </View>
+                      
+                      {/* Yearly Card */}
+                      <View style={[s.subPlanCard, { borderColor: C.primary, borderWidth: 1.5 }]}>
+                        <Text style={s.planCardTitle}>Yearly Plan</Text>
+                        <Text style={s.planCardPrice}>₹4,999<Text style={{ fontSize: 14, fontWeight: 'normal', color: C.textGray }}>/year</Text></Text>
+                        <TouchableOpacity style={s.upiBtn} onPress={() => { setSelectedPlan('yearly'); setPaymentVerifying(true); }}>
+                          <Text style={s.upiBtnTxt}>Start Yearly Plan</Text>
+                        </TouchableOpacity>
+                        <Text style={s.subBtnText}>Save ₹991 + 2 Months Free</Text>
+                      </View>
+                    </View>
+                  ) : (
+                    <View>
+                      <Text style={s.subText}>
+                        Complete your payment of ₹{selectedPlan === 'monthly' ? '499' : '4,999'} for the {selectedPlan === 'monthly' ? 'Monthly' : 'Yearly'} subscription and enter UTR.
+                      </Text>
+                      
+                      <View style={{ marginBottom: 24, marginTop: 16 }}>
+                        <Text style={{ fontSize: 14, color: C.textDark, fontWeight: '700', marginBottom: 12 }}>Step 1: Pay directly via:</Text>
+                        <View style={{ flexDirection: 'row', justifyContent: 'center', gap: 10 }}>
+                          <TouchableOpacity style={[s.upiAppBtn, { backgroundColor: '#5F259F' }]} onPress={() => handleUpiPay('phonepe')}>
+                            <Text style={s.upiAppBtnTxt}>PhonePe</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={[s.upiAppBtn, { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1CFCA' }]} onPress={() => handleUpiPay('gpay')}>
+                            <Text style={[s.upiAppBtnTxt, { color: '#1A73E8' }]}>GPay</Text>
+                          </TouchableOpacity>
+                          <TouchableOpacity style={[s.upiAppBtn, { backgroundColor: '#002E6E' }]} onPress={() => handleUpiPay('paytm')}>
+                            <Text style={s.upiAppBtnTxt}>Paytm</Text>
+                          </TouchableOpacity>
+                        </View>
+                      </View>
+                      
+                      <Text style={{ fontSize: 13, fontWeight: '600', color: C.textGray, marginBottom: 8 }}>Step 2: Enter 12-Digit UTR Number</Text>
+                      <TextInput
+                        style={s.utrInput}
+                        placeholder="e.g. 312345678901"
+                        keyboardType="number-pad"
+                        maxLength={12}
+                        value={utr}
+                        onChangeText={setUtr}
+                        returnKeyType="done"
+                        onSubmitEditing={Keyboard.dismiss}
+                      />
+                      
+                      <TouchableOpacity 
+                        style={[s.verifyBtn, utr.length !== 12 && { opacity: 0.5 }]} 
+                        onPress={() => { Keyboard.dismiss(); handleVerifyPayment(); }}
+                        disabled={loading || utr.length !== 12}
+                      >
+                        <Text style={s.verifyBtnTxt}>{loading ? 'Verifying...' : 'Verify & Upgrade'}</Text>
                       </TouchableOpacity>
-                      <TouchableOpacity style={[s.upiAppBtn, { backgroundColor: '#FFF', borderWidth: 1, borderColor: '#D1CFCA' }]} onPress={() => handleUpiPay('gpay')}>
-                        <Text style={[s.upiAppBtnTxt, { color: '#1A73E8' }]}>GPay</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={[s.upiAppBtn, { backgroundColor: '#002E6E' }]} onPress={() => handleUpiPay('paytm')}>
-                        <Text style={s.upiAppBtnTxt}>Paytm</Text>
+                      
+                      <TouchableOpacity style={s.cancelVerBtn} onPress={() => { setPaymentVerifying(false); setUtr(''); }}>
+                        <Text style={s.cancelVerTxt}>Back to Plans</Text>
                       </TouchableOpacity>
                     </View>
-                  </View>
-                  
-                  <Text style={{ fontSize: 13, fontWeight: '600', color: C.textGray, marginBottom: 8 }}>Step 2: Enter 12-Digit UTR Number</Text>
-                  <TextInput
-                    style={s.utrInput}
-                    placeholder="e.g. 312345678901"
-                    keyboardType="number-pad"
-                    maxLength={12}
-                    value={utr}
-                    onChangeText={setUtr}
-                  />
-                  
-                  <TouchableOpacity 
-                    style={[s.verifyBtn, utr.length !== 12 && { opacity: 0.5 }]} 
-                    onPress={handleVerifyPayment}
-                    disabled={loading || utr.length !== 12}
-                  >
-                    <Text style={s.verifyBtnTxt}>{loading ? 'Verifying...' : 'Verify & Upgrade'}</Text>
-                  </TouchableOpacity>
-                  
-                  <TouchableOpacity style={s.cancelVerBtn} onPress={() => { setPaymentVerifying(false); setUtr(''); }}>
-                    <Text style={s.cancelVerTxt}>Back to Plans</Text>
-                  </TouchableOpacity>
-                </View>
-              )}
-            </ScrollView>
+                  )}
+                </ScrollView>
+              </View>
+            </KeyboardAvoidingView>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </View>
   );

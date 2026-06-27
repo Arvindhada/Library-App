@@ -153,13 +153,13 @@ router.delete('/:id', protect, async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────
 // @route   POST /api/libraries/save
 // @desc    Student saves a library
-// @access  Public (Student)
+// @access  Private (Student)
 // ─────────────────────────────────────────────────────────────────
-router.post('/save', async (req, res, next) => {
+router.post('/save', protect, async (req, res, next) => {
   try {
-    const { userId, libraryId } = req.body;
+    const { libraryId } = req.body;
     const User = require('../models/User');
-    await User.findByIdAndUpdate(userId, { $addToSet: { savedLibraries: libraryId } });
+    await User.findByIdAndUpdate(req.user._id, { $addToSet: { savedLibraries: libraryId } });
     res.json({ success: true, message: 'Library saved' });
   } catch (error) { next(error); }
 });
@@ -167,13 +167,13 @@ router.post('/save', async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────
 // @route   POST /api/libraries/unsave
 // @desc    Student removes library from saved
-// @access  Public (Student)
+// @access  Private (Student)
 // ─────────────────────────────────────────────────────────────────
-router.post('/unsave', async (req, res, next) => {
+router.post('/unsave', protect, async (req, res, next) => {
   try {
-    const { userId, libraryId } = req.body;
+    const { libraryId } = req.body;
     const User = require('../models/User');
-    await User.findByIdAndUpdate(userId, { $pull: { savedLibraries: libraryId } });
+    await User.findByIdAndUpdate(req.user._id, { $pull: { savedLibraries: libraryId } });
     res.json({ success: true, message: 'Library unsaved' });
   } catch (error) { next(error); }
 });

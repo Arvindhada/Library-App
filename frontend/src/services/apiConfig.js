@@ -2,16 +2,18 @@ import { Platform } from 'react-native';
 
 // API Configuration
 // ─────────────────────────────────────────────
-// For Android Emulator:     BASE_URL = 'http://10.0.2.2:8000/api'
-// For iOS Simulator:        BASE_URL = 'http://localhost:8000/api'
-// For Real Physical Device: Use your computer's local WiFi IP below
+// PUBLIC TUNNEL (localhost.run) - Works on ANY network (WiFi + LTE both)
+// NOTE: Agar tunnel band ho jaye to naya URL update karna hoga
 // ─────────────────────────────────────────────
 
-const BASE_URL = Platform.select({
-  android: 'http://10.46.167.129:8000/api',
-  ios: 'http://10.46.167.129:8000/api',
-  default: 'http://10.46.167.129:8000/api'
-});
+// 🌐 Permanent Cloud URL (Render.com)
+const CLOUD_URL = 'https://library-app-9w88.onrender.com/api';
+
+// 📡 Local WiFi URL (jab phone aur laptop same WiFi pe ho)
+const LOCAL_URL  = 'http://192.168.29.89:8000/api';
+
+// ✅ Abhi PERMANENT CLOUD URL use ho rahi hai
+const BASE_URL = CLOUD_URL;
 
 export const API_ENDPOINTS = {
   LOGIN:      `${BASE_URL}/auth/login`,

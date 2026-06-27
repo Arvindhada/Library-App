@@ -42,47 +42,48 @@ export default function SeatManager() {
   const [activeFilter, setActiveFilter] = useState('all'); // 'all' | 'free' | 'occupied' | 'expiring'
   const [selectedShift, setSelectedShift] = useState(null); // null | 'Morning' | 'Evening' | 'Full Day'
 
-  // Compute all seat states dynamically
+  // Compute all seat states dynamically — Active AND Pending both count as occupied
   const seats = useMemo(() => {
     const today = new Date();
     const arr = [];
     const totalSeats = total || 48;
     for (let i = 1; i <= totalSeats; i++) {
-      // Find active booking for this seat
+      // Find booking for this seat — Active OR Pending (fee due) both occupy a seat
       const booking = currentBookings.find(
-        b => b.status === 'Active' && parseInt(b.seat, 10) === i
+        b => ['Active', 'Pending', 'Requested'].includes(b.status) && parseInt(b.seat, 10) === i
       );
 
       // Numeric seat label
       const label = String(i);
 
       let isExpiring = false;
-      let isFeeDue = false;
+      let isFeeDue   = false;
       if (booking) {
-        const endDate = new Date(booking.endDate);
+        const endDate  = new Date(booking.endDate);
         const timeDiff = endDate.getTime() - today.getTime();
         const diffDays = Math.ceil(timeDiff / (1000 * 3600 * 24));
-        // Flag as expiring if end date is in the past, or within 2 days
-        isExpiring = diffDays <= 2;
-        isFeeDue = endDate < today;
+        isExpiring = diffDays <= 3;         // flag if expiring within 3 days
+        isFeeDue   = endDate < today || booking.status === 'Pending';
       }
 
       arr.push({
         number: i,
         label,
         booked: !!booking,
-        studentName: booking?.student?.name || '',
-        studentPhone: booking?.student?.phone || '',
+        bookingStatus: booking?.status || null,
+        studentName:   booking?.student?.name  || '',
+        studentPhone:  booking?.student?.phone || '',
         studentExpiry: booking ? new Date(booking.endDate).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : null,
-        studentPlan: booking?.shift || 'Full Day',
+        studentPlan:   booking?.shift || 'Full Day',
         isFeeDue,
         isExpiring,
         bookingId: booking?._id,
-        booking: booking || null,
+        booking:   booking || null,
       });
     }
     return arr;
   }, [currentBookings, total]);
+
 
   // Sync selected seat details after state change (e.g. vacating a seat)
   const currentSelectedSeatDetails = useMemo(() => {
@@ -266,7 +267,7 @@ export default function SeatManager() {
               scrollEnabled={false}
               columnWrapperStyle={s.gridRow}
               renderItem={({ item }) => {
-                // Filter matches logic
+                // Filter matches logic — shift filter applied CORRECTLY
                 let matches = true;
                 if (selectedShift) {
                   const plan = item.studentPlan?.toLowerCase() || '';
@@ -275,12 +276,15 @@ export default function SeatManager() {
                   } else if (selectedShift === 'Evening') {
                     matches = item.booked && plan.includes('evening');
                   } else if (selectedShift === 'Full Day') {
-                    matches = item.booked && plan.includes('full');
+                    matches = item.booked && (plan.includes('full') || plan.includes('day'));
+                  } else {
+                    matches = true;
                   }
                 } else {
-                  if (activeFilter === 'free') matches = !item.booked;
+                  if (activeFilter === 'free')     matches = !item.booked;
                   else if (activeFilter === 'occupied') matches = item.booked && !item.isExpiring;
                   else if (activeFilter === 'expiring') matches = item.booked && item.isExpiring;
+                  // 'all' — no filter
                 }
 
                 const isSelected = selectedSeat?.number === item.number;

@@ -2,7 +2,8 @@ import React, { useMemo, useState, useEffect, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   RefreshControl, Modal, TextInput, Alert, Linking,
-  StatusBar, Dimensions,
+  StatusBar, Dimensions, Keyboard, TouchableWithoutFeedback,
+  KeyboardAvoidingView, Platform
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -712,108 +713,129 @@ export default function OwnerReports() {
       {/* ── COLLECT MODAL (from dues section) ── */}
       {/* ═══════════════════════════════════════════ */}
       <Modal visible={collectModal} animationType="slide" transparent onRequestClose={() => setCollectModal(false)}>
-        <View style={s.overlay}>
-          <View style={s.modalBox}>
-            <View style={s.modalHead}>
-              <Text style={s.modalTitle}>Collect Payment</Text>
-              <TouchableOpacity onPress={() => setCollectModal(false)}>
-                <Ionicons name="close" size={22} color={C.textGray} />
-              </TouchableOpacity>
-            </View>
-            {collectStudent && (
-              <View style={s.collectStudentInfo}>
-                <Text style={s.collectStudentName}>{collectStudent.student?.name}</Text>
-                <Text style={s.collectStudentMeta}>Seat {collectStudent.seat} · {collectStudent.shift} · {collectStudent.daysOverdue} days overdue</Text>
-              </View>
-            )}
-            <Text style={s.lbl}>Amount (₹)</Text>
-            <TextInput
-              style={s.inp}
-              keyboardType="numeric"
-              value={collectForm.amount}
-              onChangeText={v => setCollectForm(p => ({ ...p, amount: v }))}
-              placeholder="Enter amount"
-              placeholderTextColor={C.textGray}
-            />
-            <Text style={s.lbl}>Payment Method</Text>
-            <View style={s.methodRow}>
-              {['UPI', 'Cash', 'Online'].map(m => (
-                <TouchableOpacity
-                  key={m}
-                  style={[s.methodChip, collectForm.method === m && s.methodChipAct]}
-                  onPress={() => setCollectForm(p => ({ ...p, method: m }))}
-                >
-                  <Text style={[s.methodChipTxt, collectForm.method === m && { color: '#FFF' }]}>{m}</Text>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={s.overlay}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%' }}>
+              <View style={s.modalBox}>
+                <View style={s.modalHead}>
+                  <Text style={s.modalTitle}>Collect Due Payment</Text>
+                  <TouchableOpacity onPress={() => { setCollectModal(false); Keyboard.dismiss(); }}>
+                    <Ionicons name="close" size={22} color={C.textGray} />
+                  </TouchableOpacity>
+                </View>
+                
+                {/* Student Info Card */}
+                <View style={s.collectStudentInfo}>
+                  <Text style={s.collectStudentName}>{collectStudent?.student?.name}</Text>
+                  <Text style={s.collectStudentMeta}>
+                    Seat {collectStudent?.seat} · {collectStudent?.shift}
+                  </Text>
+                  <Text style={[s.collectStudentMeta, { color: C.red, fontWeight: '600', marginTop: 4 }]}>
+                    Amount Due: ₹{collectStudent?.fee?.toLocaleString('en-IN')}
+                  </Text>
+                </View>
+
+                <Text style={s.lbl}>Amount Paid (₹)</Text>
+                <TextInput
+                  style={s.inp}
+                  keyboardType="numeric"
+                  value={collectForm.amount}
+                  onChangeText={(val) => setCollectForm(p => ({ ...p, amount: val }))}
+                  placeholder="e.g. 1000"
+                  placeholderTextColor={C.textGray}
+                  returnKeyType="done"
+                  onSubmitEditing={Keyboard.dismiss}
+                />
+
+                <Text style={s.lbl}>Payment Method</Text>
+                <View style={s.methodRow}>
+                  {['UPI', 'Cash', 'Online'].map(m => (
+                    <TouchableOpacity
+                      key={m}
+                      style={[s.methodChip, collectForm.method === m && s.methodChipAct]}
+                      onPress={() => { Keyboard.dismiss(); setCollectForm(p => ({ ...p, method: m })); }}
+                    >
+                      <Text style={[s.methodChipTxt, collectForm.method === m && { color: '#FFF' }]}>{m}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+
+                <TouchableOpacity style={s.saveBtn} onPress={() => { Keyboard.dismiss(); handleCollect(); }} activeOpacity={0.85} disabled={collectSaving}>
+                  <Text style={s.saveTxt}>{collectSaving ? 'Saving…' : '✅ Record & Save to Revenue'}</Text>
                 </TouchableOpacity>
-              ))}
-            </View>
-            <TouchableOpacity style={s.saveBtn} onPress={handleCollect} activeOpacity={0.85} disabled={collectSaving}>
-              <Text style={s.saveTxt}>{collectSaving ? 'Saving…' : '✅ Record & Save to Revenue'}</Text>
-            </TouchableOpacity>
+              </View>
+            </KeyboardAvoidingView>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
 
       {/* ═══════════════════════════════════════════ */}
       {/* ── ADD EXPENSE MODAL ── */}
       {/* ═══════════════════════════════════════════ */}
       <Modal visible={expModal} animationType="slide" transparent onRequestClose={() => setExpModal(false)}>
-        <View style={s.overlay}>
-          <View style={s.modalBox}>
-            <View style={s.modalHead}>
-              <Text style={s.modalTitle}>Add Expense</Text>
-              <TouchableOpacity onPress={() => setExpModal(false)}>
-                <Ionicons name="close" size={22} color={C.textGray} />
-              </TouchableOpacity>
-            </View>
-            <Text style={s.lbl}>Category</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }} contentContainerStyle={{ gap: 8 }}>
-              {EXPENSE_CATEGORIES.map(cat => (
-                <TouchableOpacity
-                  key={cat.key}
-                  style={[s.catChip, expForm.category === cat.key && { backgroundColor: cat.color, borderColor: cat.color }]}
-                  onPress={() => setExpForm(p => ({ ...p, category: cat.key }))}
-                  activeOpacity={0.8}
-                >
-                  <Ionicons name={cat.icon} size={14} color={expForm.category === cat.key ? '#FFF' : C.textGray} />
-                  <Text style={[s.catChipTxt, expForm.category === cat.key && { color: '#FFF' }]}>{cat.label}</Text>
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <View style={s.overlay}>
+            <KeyboardAvoidingView behavior={Platform.OS === 'ios' ? 'padding' : 'height'} style={{ width: '100%' }}>
+              <View style={s.modalBox}>
+                <View style={s.modalHead}>
+                  <Text style={s.modalTitle}>Add Expense</Text>
+                  <TouchableOpacity onPress={() => { setExpModal(false); Keyboard.dismiss(); }}>
+                    <Ionicons name="close" size={22} color={C.textGray} />
+                  </TouchableOpacity>
+                </View>
+                <Text style={s.lbl}>Category</Text>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 14 }} contentContainerStyle={{ gap: 8 }} keyboardShouldPersistTaps="handled">
+                  {EXPENSE_CATEGORIES.map(cat => (
+                    <TouchableOpacity
+                      key={cat.key}
+                      style={[s.catChip, expForm.category === cat.key && { backgroundColor: cat.color, borderColor: cat.color }]}
+                      onPress={() => { Keyboard.dismiss(); setExpForm(p => ({ ...p, category: cat.key })); }}
+                      activeOpacity={0.8}
+                    >
+                      <Ionicons name={cat.icon} size={14} color={expForm.category === cat.key ? '#FFF' : C.textGray} />
+                      <Text style={[s.catChipTxt, expForm.category === cat.key && { color: '#FFF' }]}>{cat.label}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </ScrollView>
+                <Text style={s.lbl}>Amount (₹)</Text>
+                <TextInput
+                  style={s.inp}
+                  keyboardType="numeric"
+                  value={expForm.amount}
+                  onChangeText={v => setExpForm(p => ({ ...p, amount: v }))}
+                  placeholder="e.g. 1200"
+                  placeholderTextColor={C.textGray}
+                  returnKeyType="next"
+                />
+                <Text style={s.lbl}>Note (optional)</Text>
+                <TextInput
+                  style={s.inp}
+                  value={expForm.note}
+                  onChangeText={v => setExpForm(p => ({ ...p, note: v }))}
+                  placeholder="e.g. June electricity bill"
+                  placeholderTextColor={C.textGray}
+                  returnKeyType="done"
+                  onSubmitEditing={Keyboard.dismiss}
+                />
+                <Text style={s.lbl}>Paid via</Text>
+                <View style={s.methodRow}>
+                  {['Cash', 'UPI', 'Online'].map(m => (
+                    <TouchableOpacity
+                      key={m}
+                      style={[s.methodChip, expForm.method === m && s.methodChipAct]}
+                      onPress={() => { Keyboard.dismiss(); setExpForm(p => ({ ...p, method: m })); }}
+                    >
+                      <Text style={[s.methodChipTxt, expForm.method === m && { color: '#FFF' }]}>{m}</Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+                <TouchableOpacity style={[s.saveBtn, { backgroundColor: C.orange }]} onPress={() => { Keyboard.dismiss(); handleAddExpense(); }} activeOpacity={0.85} disabled={expSaving}>
+                  <Text style={s.saveTxt}>{expSaving ? 'Saving…' : '➕ Add Expense'}</Text>
                 </TouchableOpacity>
-              ))}
-            </ScrollView>
-            <Text style={s.lbl}>Amount (₹)</Text>
-            <TextInput
-              style={s.inp}
-              keyboardType="numeric"
-              value={expForm.amount}
-              onChangeText={v => setExpForm(p => ({ ...p, amount: v }))}
-              placeholder="e.g. 1200"
-              placeholderTextColor={C.textGray}
-            />
-            <Text style={s.lbl}>Note (optional)</Text>
-            <TextInput
-              style={s.inp}
-              value={expForm.note}
-              onChangeText={v => setExpForm(p => ({ ...p, note: v }))}
-              placeholder="e.g. June electricity bill"
-              placeholderTextColor={C.textGray}
-            />
-            <Text style={s.lbl}>Paid via</Text>
-            <View style={s.methodRow}>
-              {['Cash', 'UPI', 'Online'].map(m => (
-                <TouchableOpacity
-                  key={m}
-                  style={[s.methodChip, expForm.method === m && s.methodChipAct]}
-                  onPress={() => setExpForm(p => ({ ...p, method: m }))}
-                >
-                  <Text style={[s.methodChipTxt, expForm.method === m && { color: '#FFF' }]}>{m}</Text>
-                </TouchableOpacity>
-              ))}
-            </View>
-            <TouchableOpacity style={[s.saveBtn, { backgroundColor: C.orange }]} onPress={handleAddExpense} activeOpacity={0.85} disabled={expSaving}>
-              <Text style={s.saveTxt}>{expSaving ? 'Saving…' : '➕ Add Expense'}</Text>
-            </TouchableOpacity>
+              </View>
+            </KeyboardAvoidingView>
           </View>
-        </View>
+        </TouchableWithoutFeedback>
       </Modal>
     </View>
   );

@@ -15,7 +15,7 @@ const { width } = Dimensions.get('window');
 export default function LibraryDetail() {
   const router = useRouter();
   const { id } = useLocalSearchParams();
-  const { libraries, savedLibraryIds, toggleSaveLibrary, bookLibrarySpace, getPublicSeats, theme: tColors } = useApp();
+  const { userRole, libraries, savedLibraryIds, toggleSaveLibrary, bookLibrarySpace, getPublicSeats, theme: tColors } = useApp();
   const lib = libraries.find((l) => l.id === id || l._id === id) || libraries[0];
   const [slotType, setSlotType] = useState('morning');
   const [isImageViewVisible, setIsImageViewVisible] = useState(false);
@@ -214,9 +214,13 @@ export default function LibraryDetail() {
         <TouchableOpacity style={s.hBtn} onPress={() => router.back()} activeOpacity={0.8}>
           <Ionicons name="arrow-back" size={22} color={tColors.textDark} />
         </TouchableOpacity>
-        <TouchableOpacity style={s.hBtn} onPress={() => toggleSaveLibrary(lib.id)} activeOpacity={0.8}>
-          <Ionicons name={isSaved ? 'bookmark' : 'bookmark-outline'} size={22} color={isSaved ? tColors.primary : tColors.textDark} />
-        </TouchableOpacity>
+        {userRole !== 'owner' ? (
+          <TouchableOpacity style={s.hBtn} onPress={() => toggleSaveLibrary(lib.id)} activeOpacity={0.8}>
+            <Ionicons name={isSaved ? 'bookmark' : 'bookmark-outline'} size={22} color={isSaved ? tColors.primary : tColors.textDark} />
+          </TouchableOpacity>
+        ) : (
+          <View style={{ width: 44 }} />
+        )}
       </View>
 
       <ScrollView showsVerticalScrollIndicator={false}>

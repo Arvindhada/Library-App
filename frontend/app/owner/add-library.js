@@ -118,10 +118,23 @@ export default function AddLibraryWizard() {
       const { status } = await Location.requestForegroundPermissionsAsync();
       if (status !== 'granted') {
         Alert.alert('Permission Denied', 'Location permission is required to fetch address.');
+        setLocLoading(false);
         return;
       }
       
-      const location = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Balanced });
+      // Get exact location with High accuracy and timeout to prevent hanging
+      let location = null;
+      try {
+        location = await Location.getCurrentPositionAsync({ 
+          accuracy: Location.Accuracy.Highest, 
+          timeout: 10000 
+        });
+      } catch (err) {
+        // Fallback if GPS takes too long
+        location = await Location.getLastKnownPositionAsync({});
+        if (!location) throw err;
+      }
+
       const { latitude, longitude } = location.coords;
       
       const geoArr = await Location.reverseGeocodeAsync({ latitude, longitude });
@@ -140,7 +153,7 @@ export default function AddLibraryWizard() {
         Alert.alert('Address Not Found', 'Could not determine the address for this location.');
       }
     } catch (e) {
-      Alert.alert('Error', 'Failed to fetch location. Please enter manually.');
+      Alert.alert('GPS Error', 'Failed to fetch exact location (GPS signal weak). Please try again or type manually.');
     } finally {
       setLocLoading(false);
     }

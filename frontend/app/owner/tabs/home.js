@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Image,
-  ImageBackground, Modal, ActivityIndicator, Alert, TextInput, Dimensions
+  ImageBackground, Modal, ActivityIndicator, Alert, TextInput, Dimensions, Linking
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -90,19 +90,17 @@ export default function OwnerHome() {
     try {
       const token = await AsyncStorage.getItem('userToken');
       await axios.put(`${API_ENDPOINTS.BOOKINGS}/${req._id}/accept`, {}, {
-        headers: { Authorization: `Bearer ${token}` }, timeout: 5000
+        headers: { Authorization: `Bearer ${token}` }, timeout: 8000
       });
       
-      // Add to global current bookings
-      setCurrentBookings(prev => [...prev, newStudentBooking]);
+      // Backend success — refresh real data
       setJoinRequests(prev => prev.filter(r => r._id !== req._id));
       if (fetchDashboardData) fetchDashboardData();
       Alert.alert('Accepted ✅', `${req.student?.name || 'Student'} has been added as a 2-Day Demo. Collect fee to activate.`);
-    } catch {
-      // Offline/Demo fallback
-      setCurrentBookings(prev => [...prev, newStudentBooking]);
-      setJoinRequests(prev => prev.filter(r => r._id !== req._id));
-      Alert.alert('Done (Demo) ✅', `${req.student?.name || 'Student'} has been added as a 2-Day Demo. Collect fee to activate.`);
+    } catch (err) {
+      // Real error — show it, do NOT silently accept
+      const msg = err?.response?.data?.message || err?.message || 'Could not accept request. Check your connection.';
+      Alert.alert('Error ❌', msg);
     } finally {
       setActionId(null);
     }
@@ -312,14 +310,17 @@ export default function OwnerHome() {
                     <Text style={s.reviewsText}>{(lib.rating * 28).toFixed(0)} reviews</Text>
                   </View>
                   <TouchableOpacity
-                    style={[s.bookBtn, { backgroundColor: '#1A1D1E' }]}
+                    style={s.bookBtn}
                     onPress={(e) => {
                       e.stopPropagation();
-                      router.push('/owner/seat-manager');
+                      const phone = lib.whatsapp || lib.phone || '9988378077';
+                      const message = `Hello ${lib.name}, I found your library on LibConnect!`;
+                      Linking.openURL(`https://wa.me/91${phone}?text=${encodeURIComponent(message)}`)
+                        .catch(() => Alert.alert('Error', 'Could not open WhatsApp'));
                     }}
                     activeOpacity={0.85}
                   >
-                    <Text style={s.bookBtnText}>Manage →</Text>
+                    <Text style={s.bookBtnText}>Contact</Text>
                   </TouchableOpacity>
                 </View>
               </TouchableOpacity>

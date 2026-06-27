@@ -40,7 +40,7 @@ router.get('/', protect, async (req, res, next) => {
 // ─────────────────────────────────────────────────────────────────
 router.post('/', protect, async (req, res, next) => {
   try {
-    const { bookingId, amount, method, note } = req.body;
+    const { bookingId, amount, method, note, studentName, shift } = req.body;
 
     if (!bookingId || !amount) {
       res.status(400); throw new Error('bookingId and amount are required');
@@ -53,15 +53,18 @@ router.post('/', protect, async (req, res, next) => {
     const library = await Library.findOne({ _id: booking.library, owner_id: req.user._id });
     if (!library) { res.status(403); throw new Error('Not authorized — you do not own this library'); }
 
-    // Create payment record
+    // Create payment record — include studentName & shift for revenue history
     const payment = await Payment.create({
-      booking: bookingId,
-      student: booking.student._id,
-      library: booking.library,
-      amount:  Number(amount),
-      method:  method || 'Cash',
-      note:    note   || '',
-      paidDate: new Date(),
+      booking:     bookingId,
+      student:     booking.student._id,
+      library:     booking.library,
+      amount:      Number(amount),
+      method:      method      || 'Cash',
+      note:        note        || '',
+      studentName: studentName || booking.student?.name || '',
+      shift:       shift       || booking.shift || '',
+      category:    'student_fee',
+      paidDate:    new Date(),
     });
 
     // Extend booking end date by 30 days from today or current expiry, whichever is later

@@ -260,7 +260,7 @@ export const AppProvider = ({ children }) => {
         const bookings = bookRes.data?.bookings || bookRes.data || [];
         setCurrentBookings(bookings);
       } else {
-        // Clear old cached library details for accounts with no registered library
+        // No library registered yet — clear stale cache
         setCurrentLibrary(null);
         await AsyncStorage.removeItem('@libconnect_library');
         setCurrentBookings([]);
@@ -271,12 +271,14 @@ export const AppProvider = ({ children }) => {
       const normalizedLibs = (libsRes.data || []).map(l => ({ ...l, id: l._id || l.id }));
       setLibraries(normalizedLibs);
 
-      // 4. Revenue from backend
+      // 4. Revenue from backend — always load regardless of library status
       await loadRevenueData();
 
     } catch (error) {
       console.warn('fetchDashboardData failed (offline?):', error.message);
       // Keep cached data — no dummy data injected
+      // Still try to load revenue from local cache
+      try { await loadRevenueData(); } catch {}
     } finally {
       setLoading(false);
     }
@@ -507,7 +509,8 @@ export const AppProvider = ({ children }) => {
   const registerStudentDirect = async ({ name, phone, studyGoal, photo }) => {
     setLoading(true);
     try {
-      const res = await axios.post(`${API_ENDPOINTS.REGISTER}-student`, {
+      // Correct route: /api/auth/register-student
+      const res = await axios.post(`${API_ENDPOINTS.LOGIN.replace('/auth/login', '/auth/register-student')}`, {
         name,
         phone,
         studyGoal,
@@ -617,6 +620,7 @@ export const AppProvider = ({ children }) => {
         getOwnerLibrary,
         logout,
         revenueTransactions,
+        addRevenueEntry,
         loadRevenueData,
         registerStudentDirect,
         bookLibrarySpace,

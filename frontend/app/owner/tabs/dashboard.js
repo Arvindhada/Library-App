@@ -1,9 +1,9 @@
-import React, { useMemo, useEffect, useState } from 'react';
+import React, { useMemo, useEffect, useState, useCallback } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
   Dimensions, RefreshControl, Alert, StatusBar, Image, Modal, ActivityIndicator
 } from 'react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useFocusEffect } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -45,10 +45,12 @@ export default function OwnerDashboard() {
   const [loadReq, setLoadReq] = useState(false);
   const [actionId, setActionId] = useState(null);
 
-  useEffect(() => {
-    fetchDashboardData();
-    fetchJoinRequests();
-  }, []);
+  useFocusEffect(
+    useCallback(() => {
+      fetchDashboardData();
+      fetchJoinRequests();
+    }, [])
+  );
 
   const fetchJoinRequests = async () => {
     setLoadReq(true);
@@ -95,15 +97,16 @@ export default function OwnerDashboard() {
     ]);
   };
 
-  const activeBookings = currentBookings?.filter(b => b.status === 'Active') || [];
+  // Active + Pending both count as occupied seats
+  const activeBookings = currentBookings?.filter(b => ['Active', 'Pending', 'Requested'].includes(b.status)) || [];
   const occupiedCount = activeBookings.length;
   const totalSeats = currentLibrary?.total_seats || currentLibrary?.totalSeats || 50;
   const occupancy = totalSeats > 0 ? Math.round((occupiedCount / totalSeats) * 100) : 0;
 
-  // Due payments calculation
+  // Due payments: bookings where fee not paid or expired
   const dueBookings = currentBookings?.filter(b => {
     const exp = new Date(b.endDate);
-    return exp < new Date() || b.status === 'Pending';
+    return (exp < new Date() && b.status !== 'Inactive') || b.status === 'Pending';
   }) || [];
   const dueCount = dueBookings.length;
 
