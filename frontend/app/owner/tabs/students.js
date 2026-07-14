@@ -260,9 +260,25 @@ export default function StudentsTab() {
         selStudent?.shift,
       );
       setPayModal(false);
+      
+      const sName = selStudent?.student?.name || 'Student';
+      const sPhone = selStudent?.student?.phone || '';
+      const seatNo = selStudent?.seat || '';
+      const libName = currentLibrary?.name || 'Library';
+
       Alert.alert(
         '✅ Payment Recorded!',
         `₹${payForm.amount} via ${payForm.method} saved and booking renewed for 30 days.`,
+        [
+          {
+            text: 'Send WhatsApp Receipt',
+            onPress: () => {
+              const { sendPaymentReceipt } = require('../../../src/services/whatsapp');
+              sendPaymentReceipt(sPhone, sName, payForm.amount, payForm.method, libName, seatNo);
+            }
+          },
+          { text: 'Close', style: 'cancel' }
+        ]
       );
     } catch (e) {
       Alert.alert('Error', e?.response?.data?.message || 'Payment failed. Check connection.');

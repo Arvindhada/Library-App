@@ -62,3 +62,31 @@ export const sendCustomWhatsApp = async (phone, message) => {
     Alert.alert('Error', 'WhatsApp could not be opened.');
   }
 };
+
+// Send Payment Receipt structured message
+export const sendPaymentReceipt = async (phone, studentName, amount, method, libraryName, seat) => {
+  try {
+    if (!phone) return;
+    const cleanPhone = String(phone).replace(/\D/g, '');
+    const phoneWithCode = cleanPhone.length === 10 ? `91${cleanPhone}` : (cleanPhone.startsWith('91') ? cleanPhone : `91${cleanPhone}`);
+    
+    const message = `*Receipt from ${libraryName}* 📚\n\n` +
+      `Dear *${studentName}*, your payment has been successfully recorded! ✅\n\n` +
+      `🔹 *Amount:* ₹${amount}\n` +
+      `🔹 *Method:* ${method}\n` +
+      `🔹 *Seat:* ${seat || 'N/A'}\n` +
+      `🔹 *Status:* Paid & Active (30 Days Validity Extended)\n\n` +
+      `Thank you for studying with us! 📖✨`;
+
+    const url = `whatsapp://send?phone=${phoneWithCode}&text=${encodeURIComponent(message)}`;
+    const canOpen = await Linking.canOpenURL(url);
+    if (canOpen) {
+      await Linking.openURL(url);
+    } else {
+      await Linking.openURL(`https://wa.me/${phoneWithCode}?text=${encodeURIComponent(message)}`);
+    }
+  } catch (e) {
+    console.warn('Could not open WhatsApp for receipt:', e.message);
+  }
+};
+
