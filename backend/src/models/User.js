@@ -20,7 +20,7 @@ const userSchema = new mongoose.Schema({
   // Subscription Status
   subscription: {
     name:     { type: String, default: 'Basic – Free Trial' },
-    daysLeft: { type: Number, default: 28 },
+    daysLeft: { type: Number, default: 14 },
     type:     { type: String, default: 'free' }
   },
 

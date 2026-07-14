@@ -27,7 +27,7 @@ router.get('/me', protect, async (req, res, next) => {
         role:      user.role,
         photo:     user.photo     || null,
         upi_id:    user.upi_id   || '',
-        subscription: user.subscription || { name: 'Basic – Free Trial', daysLeft: 28, type: 'free' },
+        subscription: user.subscription || { name: 'Basic – Free Trial', daysLeft: 14, type: 'free' },
         createdAt: user.createdAt,
       },
       library: myLibrary
