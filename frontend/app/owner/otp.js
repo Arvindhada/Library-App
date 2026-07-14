@@ -5,10 +5,12 @@ import {
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
+import * as SecureStore from 'expo-secure-store';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import axios from 'axios';
 import { API_ENDPOINTS } from '../../src/services/apiConfig';
+import { useApp } from '../../src/context/AppContext';
 
 // ── Colors (Stitch Design Identity) ──
 const C = {
@@ -27,7 +29,8 @@ export default function OwnerOTP() {
   const router = useRouter();
   const insets = useSafeAreaInsets();
   const { phone } = useLocalSearchParams();
-  const [otp, setOtp] = useState(['', '', '', '']); // Reverted to 4-digit OTP input state
+  const { fetchDashboardData, setUserRole } = useApp();
+  const [otp, setOtp] = useState(['', '', '', '']); // 4-digit OTP input state
   const [timer, setTimer] = useState(30);
   const [loading, setLoading] = useState(false);
   const refs = useRef([]);
@@ -66,10 +69,6 @@ export default function OwnerOTP() {
     
     setLoading(true);
     try {
-      // Clear any old/invalid token first
-      await AsyncStorage.removeItem('userToken');
-      await AsyncStorage.removeItem('userRole');
-
       // Hit real backend verify-otp route
       const response = await axios.post(API_ENDPOINTS.VERIFY_OTP, {
         phone: phone.includes('+91') ? phone : `+91${phone}`,
@@ -83,9 +82,15 @@ export default function OwnerOTP() {
         throw new Error('No token received from server');
       }
 
-      // Save Real JWT Token and Role locally
-      await AsyncStorage.setItem('userToken', token);
+      // ✅ Save token to SecureStore (same place useAuth reads from)
+      await SecureStore.setItemAsync('userToken', token);
       await AsyncStorage.setItem('userRole', role || 'owner');
+
+      // Update context role
+      setUserRole(role || 'owner');
+
+      // ✅ Immediately load library + dashboard data before navigating
+      await fetchDashboardData();
       
       setLoading(false);
       router.replace('/owner/tabs');
