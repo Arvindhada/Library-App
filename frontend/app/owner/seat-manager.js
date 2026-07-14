@@ -268,6 +268,7 @@ export default function SeatManager() {
           {/* ── SEAT GRID ── */}
           <View style={s.gridCard}>
             <FlatList
+              key={NUM_COLS}
               data={seats}
               keyExtractor={(item) => String(item.number)}
               numColumns={NUM_COLS}
