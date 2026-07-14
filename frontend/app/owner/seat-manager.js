@@ -11,7 +11,8 @@ import {
   KeyboardAvoidingView, 
   Platform, 
   RefreshControl,
-  Linking
+  Linking,
+  Dimensions
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { Ionicons } from '@expo/vector-icons';
@@ -32,6 +33,12 @@ const C = {
   orangeLight: '#FFF3E8',
   orangeBorder: '#FDDCBB',
 };
+
+const SCREEN_WIDTH = Dimensions.get('window').width;
+// Grid: 16px margin on each side + 16px card padding on each side = 64px total
+// 7 columns fit well on all phones
+const NUM_COLS = 7;
+const SEAT_SIZE = Math.floor((SCREEN_WIDTH - 64) / NUM_COLS) - 6; // 6px for margin
 
 export default function SeatManager() {
   const router = useRouter();
@@ -263,7 +270,7 @@ export default function SeatManager() {
             <FlatList
               data={seats}
               keyExtractor={(item) => String(item.number)}
-              numColumns={8}
+              numColumns={NUM_COLS}
               scrollEnabled={false}
               columnWrapperStyle={s.gridRow}
               renderItem={({ item }) => {
@@ -296,6 +303,7 @@ export default function SeatManager() {
                       isBooked={item.booked}
                       isExpiring={item.isExpiring}
                       isSelected={isSelected}
+                      size={SEAT_SIZE}
                       onPress={() => matches && setSelectedSeat(item)}
                     />
                   </View>

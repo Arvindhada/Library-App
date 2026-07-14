@@ -1,10 +1,10 @@
 const errorHandler = (err, req, res, next) => {
-  console.error(`Global Exception: ${err.message}`);
+  console.error(`Global Exception: ${err.message}`, err.stack);
   
   const statusCode = res.statusCode === 200 ? 500 : res.statusCode;
   res.status(statusCode).json({
     error: 'Internal Server Error',
-    message: process.env.NODE_ENV === 'production' ? 'An unexpected error occurred. Do not worry, our servers are resilient.' : err.message,
+    message: err.message || 'An unexpected error occurred.',
   });
 };
 

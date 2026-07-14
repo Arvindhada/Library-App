@@ -1,7 +1,7 @@
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native';
 
-const SeatBox = ({ seatLabel, isBooked, isExpiring, isSelected, onPress }) => {
+const SeatBox = ({ seatLabel, isBooked, isExpiring, isSelected, onPress, size = 40 }) => {
   let boxStyle = s.freeBox;
   let textStyle = s.freeText;
 
@@ -16,7 +16,7 @@ const SeatBox = ({ seatLabel, isBooked, isExpiring, isSelected, onPress }) => {
   }
 
   // Adjust font size dynamically for 3-digit numbers
-  const fontSize = seatLabel.length > 2 ? 10 : 12;
+  const fontSize = seatLabel.length > 2 ? 9 : (size < 36 ? 10 : 12);
 
   return (
     <TouchableOpacity
@@ -24,7 +24,8 @@ const SeatBox = ({ seatLabel, isBooked, isExpiring, isSelected, onPress }) => {
       style={[
         s.box,
         boxStyle,
-        isSelected && s.selectedBox
+        isSelected && s.selectedBox,
+        { width: size, height: size, borderRadius: size * 0.2 }
       ]}
       onPress={onPress}
       activeOpacity={0.7}

@@ -221,7 +221,8 @@ export default function StudentsTab() {
         Alert.alert('✅ Done!', isEdit ? 'Student updated successfully.' : (form.isPaid ? 'Student added (Fee Paid).' : 'Student added on 2-Day Demo.'));
       }, 300);
     } catch (e) {
-      Alert.alert('Error', e?.message || e?.response?.data?.message || 'Could not save student. Check your connection.');
+      const msg = e?.response?.data?.message || e?.message || 'Could not save student. Check your connection.';
+      Alert.alert('Error', msg);
     } finally {
       setSaving(false);
     }
