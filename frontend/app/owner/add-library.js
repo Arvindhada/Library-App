@@ -280,13 +280,13 @@ export default function AddLibraryWizard() {
   };
 
   const handleFreeTrial = async () => {
-    const subInfo = { name: 'Basic - Free Trial', daysLeft: 30, type: 'trial' };
+    const subInfo = { name: 'Basic - Free Trial', daysLeft: 14, type: 'trial' };
     setSubscriptionPlan(subInfo);
     await AsyncStorage.setItem('@libconnect_subscription', JSON.stringify(subInfo));
     
     Alert.alert(
       "Free Trial Activated! 🎁", 
-      "Your 30-day Free Trial is active. Proceed to list your library.",
+      "Your 14-day Free Trial is active. Proceed to list your library.",
       [{ text: "Continue", onPress: () => setStep(1) }]
     );
   };
@@ -300,7 +300,7 @@ export default function AddLibraryWizard() {
       <View style={s.subPlanCard}>
         <View style={s.planHeaderRow}>
           <Text style={s.planCardTitle}>Monthly Plan</Text>
-          <View style={s.trialBadge}><Text style={s.trialBadgeTxt}>30 days FREE trial</Text></View>
+          <View style={s.trialBadge}><Text style={s.trialBadgeTxt}>14 days FREE trial</Text></View>
         </View>
         <Text style={s.planCardPrice}>₹499<Text style={{ fontSize: 14, fontWeight: 'normal', color: C.textGray }}>/month</Text></Text>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: -10, marginBottom: 16, gap: 8 }}>
@@ -318,7 +318,7 @@ export default function AddLibraryWizard() {
         
         <View style={{ marginTop: 16 }}>
           <TouchableOpacity style={s.upiBtn} onPress={handleFreeTrial}>
-            <Text style={s.upiBtnTxt}>Start 30 Days Free Trial</Text>
+            <Text style={s.upiBtnTxt}>Start 14 Days Free Trial</Text>
           </TouchableOpacity>
           <Text style={s.subBtnText}>No card required - Pay later</Text>
         </View>
